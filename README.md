@@ -25,6 +25,25 @@ Transforms your AI-assisted coding activity into a cinematic, narrated video —
 - **Thumbnail generation** — AI-generated thumbnail optimized for clicks
 - **Templates** — Documentary, tutorial, speedrun, meme
 
+## Generation engine (cascade)
+
+Video generation follows the shared `@vibe/core` cascade so it always works:
+
+1. **Your existing model** — if your agent's provider does video (e.g. Sora via your
+   OpenAI), use it.
+2. **A video-gen key you bring** — Wavespeed, Replicate, or similar.
+3. **Hyperframes fallback** — pure HTML/CSS/JS animated "video" (a rendered,
+   animated web page). No generative-video model, no key, no network — always
+   available. (The prototype below _is_ a working Hyperframes recap.)
+
+Options across all tiers: **sync/live** (scenes build as the agent works) or
+**async** (rendered after a turn/session) — user-configurable per hook · **aspect
+ratios** 16:9 / 9:16 / 1:1 / GIF · **sound on/off** (soundtrack via the VibeRadio
+engine + optional narration) · **subtitles/captions** · **transitions & templates**
+(documentary, tutorial, speedrun, meme) · **avatar narrator** — if you've set up a
+personal likeness/voice (e.g. HeyGen, or an on-device avatar), the recap can be
+narrated by your avatar instead of an abstract summary.
+
 ## Distribution
 
 - **CLI** — `vibemovie render --session <id>` or `vibemovie render --repo .`
@@ -41,6 +60,25 @@ Transforms your AI-assisted coding activity into a cinematic, narrated video —
 - ElevenLabs (voiceover)
 - Tone.js (soundtrack — shared with VibeRadio)
 - FFmpeg (post-processing)
+
+## Prototype
+
+Interactive, self-contained UX prototype (no build, no network): open
+[`docs/prototype.html`](docs/prototype.html) in a browser — it plays a real
+Hyperframes recap with a working scrubber, the cascade selector, and an avatar
+narrator toggle.
+
+## Local-first
+
+Runs on your own machine. The Hyperframes tier renders fully offline; nothing leaves
+your machine unless you opt into a hosted video model. Enforced by the `@vibe/core`
+consent model.
+
+## Vibe Suite
+
+Part of the **Vibe Suite** — companion tools for agentic coding CLIs (Claude Code,
+Codex, Cursor, Gemini, Grok, pi, Kimi, and other harnesses). Ships as **CLI + npm
+package + MCP server**.
 
 ## Relationship to VibeReplay
 
