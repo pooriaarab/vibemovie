@@ -1,0 +1,866 @@
+<!--
+THESIS: vibemovie is a screening room, not a dashboard — the coding session is graded
+film, and the interface is the projector, not a metrics panel.
+OWN-WORLD: near-black theater stock (#0a0908) + warm gold accent (#d9a94e), a real
+16:9 print frame with punched sprocket edges, mono timecodes as the only monospace use,
+muted filmic secondary palette (moss-teal add / burnt-rust remove / dusk-purple merge).
+STORY: visitor sees the provider cascade default to on-device Hyperframes, watches it
+actually play a 6-scene montage of a coding session, can summon an abstract narrator,
+and sees what triggers a render.
+FIRST VIEWPORT: cascade selector, then the player frame full width, scrubber + transport
+below it, trigger chips beneath — the montage is already playing when the page opens.
+FORM: single committed scene (cinema screening room), brief-pinned by the request; no
+concept roll run — direction was fully specified. Transitions vary per scene: fade,
+slide, scale, rise, fade, fade.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vibemovie — session recap</title>
+<style>
+  :root{
+    --bg: #0a0908;
+    --bg-raised: #14120e;
+    --frame: #050403;
+    --ink: #f2ede1;
+    --ink-dim: #a89e8c;
+    --ink-faint: #6b6255;
+    --gold: #d9a94e;
+    --gold-dim: #8a6a2f;
+    --add: #7fae8a;
+    --remove: #b25a45;
+    --merge: #a084d6;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --radius: 14px;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    padding: 40px 20px 64px;
+    display:flex; justify-content:center;
+  }
+
+  .stage{ width:100%; max-width: 900px; }
+
+  /* ---------- topbar ---------- */
+  .topbar{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom: 22px; flex-wrap: wrap; gap: 10px;
+  }
+  .wordmark{
+    font-size: 1.35rem; font-weight: 700; letter-spacing: -0.03em; color: var(--ink);
+  }
+  .wordmark b{ font-weight: 700; color: var(--gold); }
+  .tagline{
+    display:block; font-size: 0.78rem; font-weight: 400; letter-spacing: 0;
+    color: var(--ink-faint); margin-top: 2px;
+  }
+
+  .badge-local{
+    display:inline-flex; align-items:center; gap:7px;
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.01em;
+    color: var(--ink-dim);
+    background: var(--bg-raised);
+    border: 1px solid #262019;
+    padding: 6px 12px; border-radius: 999px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.4);
+    white-space: nowrap;
+  }
+  .badge-local .dot{
+    width:7px; height:7px; border-radius:50%;
+    background: #7fc98a;
+    box-shadow: 0 0 0 0 rgba(127,201,138,0.5);
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .badge-local .dot{ animation: pulse-dot 2.4s var(--ease) infinite; }
+  }
+  @keyframes pulse-dot{
+    0%   { box-shadow: 0 0 0 0 rgba(127,201,138,0.45); }
+    70%  { box-shadow: 0 0 0 6px rgba(127,201,138,0); }
+    100% { box-shadow: 0 0 0 0 rgba(127,201,138,0); }
+  }
+
+  /* ---------- provider cascade ---------- */
+  .cascade{
+    display:flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .cascade-btn{
+    font: inherit; font-size: 0.82rem; font-weight: 600;
+    color: var(--ink-dim);
+    background: var(--bg-raised);
+    border: 1px solid #262019;
+    border-radius: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    display:flex; align-items:center; gap:6px;
+    transition: color .18s var(--ease), border-color .18s var(--ease), background .18s var(--ease);
+  }
+  .cascade-btn span{ color: var(--ink-faint); font-weight: 500; }
+  .cascade-btn:hover{ color: var(--ink); border-color: #3a3024; }
+  .cascade-btn.is-active{
+    color: var(--bg);
+    background: var(--gold);
+    border-color: var(--gold);
+  }
+  .cascade-btn.is-active span{ color: rgba(10,9,8,0.6); }
+  .cascade-btn:focus-visible{ outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ---------- player ---------- */
+  .player{
+    position: relative;
+    background: var(--frame);
+    border-radius: var(--radius);
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.75), 0 2px 0 rgba(255,255,255,0.02) inset;
+    overflow: hidden;
+    border: 1px solid #201a12;
+  }
+
+  .filmstrip{
+    height: 12px;
+    background-color: #171009;
+    background-image:
+      radial-gradient(circle 3.2px at 12px 6px, var(--bg) 3.2px, transparent 3.6px);
+    background-size: 24px 12px;
+    background-repeat: repeat-x;
+  }
+
+  .screen{
+    position: relative;
+    aspect-ratio: 16/9;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 100% at 50% 0%, #171008 0%, #0a0705 60%, #050302 100%);
+  }
+  .screen::after{
+    content:"";
+    position:absolute; inset:0; pointer-events:none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity: .05; mix-blend-mode: overlay;
+  }
+  .screen::before{
+    content:"";
+    position:absolute; inset:0; pointer-events:none; z-index: 5;
+    box-shadow: inset 0 0 90px 20px rgba(0,0,0,0.55);
+  }
+
+  .scene{
+    position:absolute; inset:0;
+    display:none;
+    flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    padding: 8% 9%;
+    will-change: transform, opacity;
+  }
+  .scene.is-live{ display:flex; }
+
+  /* --- scene 1: title --- */
+  .reel{
+    position:absolute; top:8%; right:6%; width: 90px; height: 90px; opacity: .16;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .reel{ animation: spin 26s linear infinite; }
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .session-title{
+    font-size: clamp(1.6rem, 4.4vw, 2.7rem);
+    font-weight: 700; letter-spacing: -0.03em; margin: 0 0 10px;
+  }
+  .session-sub{
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: clamp(1rem, 2.6vw, 1.35rem);
+    color: var(--gold); font-weight: 600; letter-spacing: -0.01em;
+  }
+  .session-caption{
+    margin-top: 14px; font-size: 0.82rem; color: var(--ink-faint);
+  }
+
+  /* --- scene 2: tasks --- */
+  .tasks-head{
+    font-size: clamp(1.3rem, 3.4vw, 2rem); font-weight: 700; letter-spacing: -0.03em;
+    margin-bottom: 22px;
+  }
+  .tasks-head b{ color: var(--gold); font-size: 1.25em; }
+  .task-list{ width: min(440px, 84%); display:flex; flex-direction:column; gap: 12px; }
+  .task-row{
+    display:flex; align-items:center; gap: 12px;
+    text-align:left;
+    padding: 10px 4px;
+    border-bottom: 1px solid #201a12;
+  }
+  .task-row:last-child{ border-bottom: none; }
+  .task-row .tick{ flex: none; }
+  .task-row .label{ flex:1; font-size: 0.92rem; color: var(--ink); }
+  .task-row .dur{ font-family: "SF Mono", Menlo, monospace; font-size: 0.74rem; color: var(--ink-faint); }
+
+  /* --- scene 3: diff --- */
+  .diff-head{ font-size: clamp(1.3rem, 3.4vw, 2rem); font-weight: 700; letter-spacing: -0.03em; margin-bottom: 20px; }
+  .diff-bar-wrap{ width: min(440px, 84%); }
+  .diff-bar{
+    height: 14px; border-radius: 7px; overflow:hidden; display:flex;
+    background: #1a140d;
+  }
+  .diff-bar .add{ background: var(--add); height:100%; width:0%; }
+  .diff-bar .remove{ background: var(--remove); height:100%; width:0%; }
+  .diff-stats{
+    margin-top: 10px; font-family: "SF Mono", Menlo, monospace; font-size: 0.9rem;
+    display:flex; gap: 16px; justify-content:center;
+  }
+  .diff-stats .plus{ color: var(--add); }
+  .diff-stats .minus{ color: var(--remove); }
+  .diff-files{
+    margin-top: 18px; display:flex; flex-direction:column; gap: 6px; align-items:center;
+  }
+  .diff-files .f{
+    font-family: "SF Mono", Menlo, monospace; font-size: 0.74rem; color: var(--ink-dim);
+    opacity: 0; transform: translateY(8px);
+  }
+
+  /* --- scene 4: terminal --- */
+  .terminal{
+    width: min(460px, 88%); background: #0d0b08; border: 1px solid #241d14;
+    border-radius: 10px; overflow:hidden; text-align:left;
+    box-shadow: 0 14px 34px -16px rgba(0,0,0,0.7);
+  }
+  .terminal-bar{
+    display:flex; align-items:center; gap:6px;
+    padding: 8px 10px; background: #161109; border-bottom: 1px solid #241d14;
+  }
+  .terminal-bar span{ width:9px; height:9px; border-radius:50%; background:#3a3024; }
+  .terminal-bar .name{
+    margin-left: 8px; font-size: 0.7rem; color: var(--ink-faint); font-family: "SF Mono", Menlo, monospace;
+  }
+  .terminal-body{
+    padding: 14px 16px; font-family: "SF Mono", Menlo, monospace; font-size: 0.78rem;
+    line-height: 1.7; min-height: 108px; color: var(--ink-dim);
+  }
+  .terminal-body .ok{ color: var(--add); }
+  .terminal-body .cursor{
+    display:inline-block; width: 6px; height: 12px; background: var(--gold);
+    vertical-align: -2px; margin-left: 2px;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .terminal-body .cursor.blink{ animation: blink 1s steps(1) infinite; }
+  }
+  @keyframes blink{ 50%{ opacity: 0; } }
+
+  /* --- scene 5: merge --- */
+  .merge-badge{
+    width: 74px; height: 74px; margin-bottom: 14px;
+    color: var(--merge);
+  }
+  .merge-head{ font-size: clamp(1.3rem, 3.4vw, 2rem); font-weight:700; letter-spacing:-0.03em; }
+  .merge-sub{ margin-top: 6px; font-size: 0.85rem; color: var(--ink-dim); }
+  .confetti{ position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+  .confetti i{
+    position:absolute; top:-10%; width: 7px; height: 12px; opacity:0;
+    border-radius: 2px;
+  }
+  .confetti.is-firing i{ animation: fall 1.8s ease-in forwards; }
+  @keyframes fall{
+    0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
+    100% { opacity: 0; transform: translateY(220px) rotate(300deg); }
+  }
+
+  /* --- scene 6: end --- */
+  .end-mark{ font-size: clamp(1.4rem, 3.6vw, 2.2rem); font-weight:700; letter-spacing:-0.03em; }
+  .end-mark b{ color: var(--gold); }
+  .end-sub{ margin-top: 8px; font-size: 0.8rem; color: var(--ink-faint); }
+  .loop-icon{ width: 26px; height: 26px; margin-top: 16px; color: var(--ink-faint); }
+  @media (prefers-reduced-motion: no-preference){
+    .loop-icon{ animation: spin 3.5s linear infinite; }
+  }
+
+  /* --- scene title overlay (lower third) --- */
+  .scene-title{
+    position:absolute; left: 20px; bottom: 18px; z-index: 6;
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
+    color: var(--ink-dim);
+    background: rgba(5,4,3,0.55);
+    backdrop-filter: blur(6px);
+    padding: 6px 11px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.06);
+    opacity: 0; transform: translateY(6px);
+    transition: opacity .35s var(--ease), transform .35s var(--ease);
+  }
+  .scene-title.is-shown{ opacity: 1; transform: translateY(0); }
+
+  /* --- provider lock overlay --- */
+  .provider-lock{
+    position:absolute; inset:0; z-index: 8;
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; padding: 10%;
+    background: rgba(5,4,3,0.88);
+    backdrop-filter: blur(3px);
+  }
+  .provider-lock.is-shown{ display:flex; }
+  .provider-lock svg{ width: 34px; height: 34px; color: var(--ink-faint); margin-bottom: 14px; }
+  .provider-lock .p-title{ font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; }
+  .provider-lock .p-sub{ margin-top: 8px; font-size: 0.82rem; color: var(--ink-dim); max-width: 340px; }
+
+  /* --- avatar narrator --- */
+  .avatar-wrap{
+    position:absolute; right: 16px; bottom: 16px; z-index: 7;
+    width: 58px; height: 58px;
+  }
+  .avatar-wrap[hidden]{ display:none; }
+  .avatar-wrap svg{ width:100%; height:100%; display:block; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.5)); }
+  .avatar-mouth{ transform-origin: center; transform-box: fill-box; }
+  .avatar-wrap.is-talking .avatar-mouth{ animation: talk 0.42s ease-in-out infinite alternate; }
+  @keyframes talk{ from{ transform: scaleY(0.35); } to{ transform: scaleY(1); } }
+
+  .captions{
+    position: relative; z-index: 6;
+    background: var(--bg-raised);
+    border-top: 1px solid #201a12;
+    color: var(--ink);
+    font-size: 0.86rem;
+    padding: 12px 18px;
+    min-height: 20px;
+    text-align:center;
+  }
+  .captions[hidden]{ display:none; }
+
+  /* ---------- controls ---------- */
+  .controls{
+    display:flex; align-items:center; gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-raised);
+    border-top: 1px solid #201a12;
+  }
+  .icon-btn{
+    flex: none; width: 34px; height: 34px; border-radius: 9px;
+    display:flex; align-items:center; justify-content:center;
+    background: #201a12; border: 1px solid #2c2417; color: var(--ink);
+    cursor: pointer; transition: background .16s var(--ease), color .16s var(--ease);
+  }
+  .icon-btn:hover{ background: #2c2417; }
+  .icon-btn svg{ width: 15px; height: 15px; }
+  .icon-btn:focus-visible{ outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .time{
+    font-family: "SF Mono", Menlo, monospace; font-size: 0.76rem;
+    color: var(--ink-faint); flex: none; width: 38px;
+  }
+  .time.total{ text-align: right; }
+
+  .scrubber{
+    flex: 1; position: relative; height: 22px; display:flex; align-items:center; cursor: pointer;
+  }
+  .scrubber-track{
+    position:absolute; left:0; right:0; top: 50%; height: 4px; transform: translateY(-50%);
+    background: #241d14; border-radius: 999px; overflow: hidden;
+  }
+  .scrubber-fill{
+    position:absolute; left:0; top:0; bottom:0; width: 0%;
+    background: var(--gold); border-radius: 999px;
+  }
+  .scrubber-markers{ position:absolute; inset:0; }
+  .scrubber-markers i{
+    position:absolute; top:50%; width:1px; height: 10px; background: rgba(0,0,0,0.5);
+    transform: translate(0, -50%);
+  }
+  .scrubber-thumb{
+    position:absolute; top:50%; width: 11px; height:11px; border-radius:50%;
+    background: var(--ink); transform: translate(-50%, -50%);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  }
+
+  .avatar-toggle{
+    flex:none; font: inherit; font-size: 0.76rem; font-weight: 600;
+    color: var(--ink-dim); background: #201a12; border: 1px solid #2c2417;
+    border-radius: 8px; padding: 7px 11px; cursor:pointer;
+    transition: color .16s var(--ease), border-color .16s var(--ease);
+  }
+  .avatar-toggle[aria-pressed="true"]{ color: var(--gold); border-color: var(--gold-dim); }
+  .avatar-toggle:focus-visible{ outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ---------- trigger chips ---------- */
+  .triggers{
+    margin-top: 22px; display:flex; align-items:center; gap: 10px; flex-wrap: wrap;
+  }
+  .triggers-label{ font-size: 0.78rem; color: var(--ink-faint); margin-right: 2px; }
+  .chip{
+    font: inherit; font-size: 0.8rem; font-weight: 600;
+    color: var(--ink-dim); background: transparent;
+    border: 1px solid #2c2417; border-radius: 999px;
+    padding: 7px 14px; cursor: pointer;
+    transition: color .16s var(--ease), border-color .16s var(--ease), background .16s var(--ease);
+  }
+  .chip:hover{ border-color: #4a3c26; color: var(--ink); }
+  .chip.is-active{
+    color: var(--gold); border-color: var(--gold-dim); background: rgba(217,169,78,0.08);
+  }
+  .chip:focus-visible{ outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  @media (max-width: 560px){
+    .controls{ flex-wrap: wrap; }
+    .avatar-toggle{ order: 5; margin-left: 46px; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="topbar">
+    <div>
+      <div class="wordmark">vibe<b>movie</b></div>
+      <span class="tagline">turns a coding session into a recap</span>
+    </div>
+    <div class="badge-local"><span class="dot"></span>local · no data out</div>
+  </div>
+
+  <div class="cascade" role="group" aria-label="video generation provider">
+    <button class="cascade-btn" data-provider="sora">🎬 Sora <span>(your key)</span></button>
+    <button class="cascade-btn" data-provider="wavespeed">🎬 Wavespeed <span>(your key)</span></button>
+    <button class="cascade-btn is-active" data-provider="hyperframes">🎬 Hyperframes <span>· on-device</span></button>
+  </div>
+
+  <div class="player">
+    <div class="filmstrip"></div>
+
+    <div class="screen" id="screen">
+
+      <section class="scene" data-transition="fade" id="scene-title">
+        <svg class="reel" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="50" cy="50" r="46"/>
+          <circle cx="50" cy="20" r="9"/><circle cx="76" cy="65" r="9"/><circle cx="24" cy="65" r="9"/>
+          <circle cx="50" cy="50" r="6" fill="currentColor" stroke="none"/>
+        </svg>
+        <div class="session-title">vibe session</div>
+        <div class="session-sub" id="titleCounter">0h 00m</div>
+        <div class="session-caption">agentic coding session · recapped on-device</div>
+      </section>
+
+      <section class="scene" data-transition="slide" id="scene-tasks">
+        <div class="tasks-head"><b>3</b> tasks completed</div>
+        <div class="task-list">
+          <div class="task-row" data-i="0">
+            <svg class="tick" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="9" stroke="#3a3024" stroke-width="1.4"/>
+              <path d="M5.5 10.2l3 3 6-6.4" stroke="var(--add)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+            </svg>
+            <span class="label">Refactored auth middleware</span>
+            <span class="dur">18m</span>
+          </div>
+          <div class="task-row" data-i="1">
+            <svg class="tick" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="9" stroke="#3a3024" stroke-width="1.4"/>
+              <path d="M5.5 10.2l3 3 6-6.4" stroke="var(--add)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+            </svg>
+            <span class="label">Fixed flaky test in CI</span>
+            <span class="dur">42m</span>
+          </div>
+          <div class="task-row" data-i="2">
+            <svg class="tick" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="9" stroke="#3a3024" stroke-width="1.4"/>
+              <path d="M5.5 10.2l3 3 6-6.4" stroke="var(--add)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+            </svg>
+            <span class="label">Shipped dark mode toggle</span>
+            <span class="dur">1h 14m</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" data-transition="scale" id="scene-diff">
+        <div class="diff-head">12 files changed</div>
+        <div class="diff-bar-wrap">
+          <div class="diff-bar"><div class="add" id="diffAdd"></div><div class="remove" id="diffRemove"></div></div>
+          <div class="diff-stats"><span class="plus">+340</span><span class="minus">−88</span></div>
+        </div>
+        <div class="diff-files" id="diffFiles">
+          <div class="f">src/auth/middleware.ts</div>
+          <div class="f">tests/ci/flaky.spec.ts</div>
+          <div class="f">app/theme/toggle.tsx</div>
+          <div class="f">+9 more</div>
+        </div>
+      </section>
+
+      <section class="scene" data-transition="rise" id="scene-terminal">
+        <div class="terminal">
+          <div class="terminal-bar"><span></span><span></span><span></span><span class="name">vibe — zsh</span></div>
+          <div class="terminal-body" id="termBody"></div>
+        </div>
+      </section>
+
+      <section class="scene" data-transition="fade" id="scene-merge">
+        <svg class="merge-badge" id="mergeBadge" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+          <circle cx="14" cy="12" r="4"/>
+          <circle cx="14" cy="36" r="4"/>
+          <circle cx="34" cy="12" r="4"/>
+          <path d="M14 16v12a8 8 0 0 0 8 8h4"/>
+          <path d="M34 16v4"/>
+        </svg>
+        <div class="merge-head">PR #42 merged</div>
+        <div class="merge-sub">into main · reviewed by 2</div>
+        <div class="confetti" id="confetti"></div>
+      </section>
+
+      <section class="scene" data-transition="fade" id="scene-end">
+        <div class="end-mark">vibe<b>movie</b></div>
+        <div class="end-sub">generated on-device · hyperframes</div>
+        <svg class="loop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M17 2l4 4-4 4"/><path d="M3 12v-2a4 4 0 0 1 4-4h14"/>
+          <path d="M7 22l-4-4 4-4"/><path d="M21 12v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </section>
+
+      <div class="scene-title" id="sceneTitle"></div>
+
+      <div class="provider-lock" id="providerLock">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <div class="p-title" id="lockTitle">Would render via Sora</div>
+        <div class="p-sub" id="lockSub">Connect your OpenAI key to generate this recap with Sora. Hyperframes renders the same montage on-device, no key required.</div>
+      </div>
+
+      <div class="avatar-wrap" id="avatarWrap" hidden>
+        <svg viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="27" fill="#1a140d" stroke="#3a3024" stroke-width="1.5"/>
+          <circle cx="21" cy="26" r="2.6" fill="var(--gold)"/>
+          <circle cx="39" cy="26" r="2.6" fill="var(--gold)"/>
+          <ellipse class="avatar-mouth" cx="30" cy="39" rx="7" ry="3.4" fill="var(--gold)"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="captions" id="captions" hidden></div>
+
+    <div class="controls">
+      <button class="icon-btn" id="playBtn" aria-label="Pause">
+        <svg id="playIcon" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="4" height="12" rx="1"/><rect x="9" y="2" width="4" height="12" rx="1"/></svg>
+      </button>
+      <div class="time" id="timeCurrent">0:00</div>
+      <div class="scrubber" id="scrubber">
+        <div class="scrubber-track"><div class="scrubber-fill" id="scrubberFill"></div></div>
+        <div class="scrubber-markers" id="scrubberMarkers"></div>
+        <div class="scrubber-thumb" id="scrubberThumb"></div>
+      </div>
+      <div class="time total" id="timeTotal">0:25</div>
+      <button class="avatar-toggle" id="avatarToggle" aria-pressed="false">Narrator</button>
+    </div>
+  </div>
+
+  <div class="triggers" id="triggers">
+    <span class="triggers-label">Generates a movie on:</span>
+    <button class="chip is-active" data-trigger="pr">PR opened</button>
+    <button class="chip" data-trigger="prototype">Prototype finished</button>
+    <button class="chip" data-trigger="spec">Spec completed</button>
+    <button class="chip" data-trigger="manual">Manual</button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var SCENES = [
+    { id:'scene-title',    duration: 4200, caption:"Two hours, fourteen minutes in the flow." },
+    { id:'scene-tasks',    duration: 4200, caption:"Three tasks landed, clean." },
+    { id:'scene-diff',     duration: 4200, caption:"Twelve files touched — more added than removed." },
+    { id:'scene-terminal', duration: 4600, caption:"Tests green. Shipped to main." },
+    { id:'scene-merge',    duration: 4600, caption:"Pull request forty-two, merged." },
+    { id:'scene-end',      duration: 3400, caption:"That's the session. Run it back." }
+  ];
+
+  var offsets = []; var acc = 0;
+  SCENES.forEach(function(s){ offsets.push(acc); acc += s.duration; });
+  var TOTAL = acc;
+
+  var els = {};
+  SCENES.forEach(function(s){ els[s.id] = document.getElementById(s.id); });
+
+  var screen        = document.getElementById('screen');
+  var sceneTitleEl   = document.getElementById('sceneTitle');
+  var playBtn        = document.getElementById('playBtn');
+  var playIcon       = document.getElementById('playIcon');
+  var scrubber       = document.getElementById('scrubber');
+  var scrubberFill   = document.getElementById('scrubberFill');
+  var scrubberThumb  = document.getElementById('scrubberThumb');
+  var scrubberMarkers= document.getElementById('scrubberMarkers');
+  var timeCurrent    = document.getElementById('timeCurrent');
+  var timeTotal      = document.getElementById('timeTotal');
+  var avatarToggle   = document.getElementById('avatarToggle');
+  var avatarWrap     = document.getElementById('avatarWrap');
+  var captions       = document.getElementById('captions');
+  var providerLock   = document.getElementById('providerLock');
+  var lockTitle      = document.getElementById('lockTitle');
+  var cascadeBtns    = document.querySelectorAll('.cascade-btn');
+  var titleCounter   = document.getElementById('titleCounter');
+  var diffAdd        = document.getElementById('diffAdd');
+  var diffRemove     = document.getElementById('diffRemove');
+  var diffFiles      = document.getElementById('diffFiles').querySelectorAll('.f');
+  var termBody       = document.getElementById('termBody');
+  var confetti       = document.getElementById('confetti');
+  var mergeBadge     = document.getElementById('mergeBadge');
+
+  // scrubber scene markers
+  SCENES.forEach(function(s, i){
+    if(i === 0) return;
+    var m = document.createElement('i');
+    m.style.left = (offsets[i] / TOTAL * 100) + '%';
+    scrubberMarkers.appendChild(m);
+  });
+
+  function fmt(ms){
+    var s = Math.floor(ms/1000);
+    var m = Math.floor(s/60); s = s%60;
+    return m + ':' + (s<10?'0':'') + s;
+  }
+  timeTotal.textContent = fmt(TOTAL);
+
+  function easeOutExpo(x){ return x >= 1 ? 1 : 1 - Math.pow(2, -10*x); }
+  function easeOutBack(x){
+    var c1 = 1.7, c3 = c1+1;
+    return 1 + c3*Math.pow(x-1,3) + c1*Math.pow(x-1,2);
+  }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+  var confettiColors = ['var(--gold)','var(--add)','var(--remove)','var(--merge)'];
+
+  function buildConfetti(){
+    confetti.innerHTML = '';
+    for(var i=0;i<16;i++){
+      var el = document.createElement('i');
+      var left = 8 + Math.random()*84;
+      el.style.left = left + '%';
+      el.style.background = confettiColors[i % confettiColors.length];
+      el.style.animationDelay = (Math.random()*0.5) + 's';
+      el.style.transform = 'rotate(' + Math.floor(Math.random()*360) + 'deg)';
+      confetti.appendChild(el);
+    }
+  }
+  buildConfetti();
+
+  var termLines = [
+    { text: '$ npm test', cls:'' },
+    { text: '✓ 42 passed', cls:'ok' },
+    { text: '$ git push', cls:'' },
+    { text: '→ pushed to origin/main', cls:'ok' }
+  ];
+  var CPS = 34; // chars per second
+  var termStarts = []; var t0 = 250;
+  termLines.forEach(function(l){
+    termStarts.push(t0);
+    t0 += (l.text.length / CPS) * 1000 + 260;
+  });
+
+  var provider = 'hyperframes';
+  var isPlaying = true;
+  var t = 0;
+  var lastSceneIdx = -1;
+  var lastFrame = null;
+
+  function sceneIndexAt(time){
+    for(var i=SCENES.length-1;i>=0;i--){
+      if(time >= offsets[i]) return i;
+    }
+    return 0;
+  }
+
+  function applyTransition(el, type, localT, dur){
+    var inWin = Math.min(560, dur*0.28);
+    var outWin = Math.min(560, dur*0.28);
+    var opacity = 1, tf = 'none';
+    if(localT < inWin){
+      var p = easeOutExpo(localT/inWin);
+      if(type==='fade'){ opacity=p; tf = 'scale(' + (0.98+0.02*p) + ')'; }
+      else if(type==='slide'){ opacity=p; tf = 'translateX(' + ((1-p)*44) + 'px)'; }
+      else if(type==='scale'){ opacity=p; tf = 'scale(' + (0.9+0.1*p) + ')'; }
+      else if(type==='rise'){ opacity=p; tf = 'translateY(' + ((1-p)*40) + 'px)'; }
+    } else if(localT > dur-outWin){
+      var p2 = easeOutExpo((localT-(dur-outWin))/outWin);
+      var q = 1-p2;
+      if(type==='fade'){ opacity=q; tf = 'scale(' + (1-0.02*p2) + ')'; }
+      else if(type==='slide'){ opacity=q; tf = 'translateX(' + (-p2*44) + 'px)'; }
+      else if(type==='scale'){ opacity=q; tf = 'scale(' + (1-0.1*p2) + ')'; }
+      else if(type==='rise'){ opacity=q; tf = 'translateY(' + (-p2*40) + 'px)'; }
+    }
+    el.style.opacity = opacity;
+    el.style.transform = tf;
+  }
+
+  function renderTitle(localT){
+    var p = easeOutExpo(clamp(localT/2400, 0, 1));
+    var totalMin = Math.round(134 * p);
+    var h = Math.floor(totalMin/60), m = totalMin%60;
+    titleCounter.textContent = h + 'h ' + (m<10?'0':'') + m + 'm';
+  }
+
+  function renderTasks(localT){
+    var rows = els['scene-tasks'].querySelectorAll('.task-row');
+    rows.forEach(function(row, i){
+      var start = 450 + i*380;
+      var p = easeOutExpo(clamp((localT-start)/420, 0, 1));
+      row.style.opacity = p;
+      row.style.transform = 'translateY(' + ((1-p)*14) + 'px)';
+      var path = row.querySelector('.tick path');
+      path.setAttribute('stroke-dashoffset', String(1-p));
+    });
+  }
+
+  function renderDiff(localT){
+    var p = easeOutExpo(clamp((localT-350)/900, 0, 1));
+    diffAdd.style.width = (p * (340/428) * 100) + '%';
+    diffRemove.style.width = (p * (88/428) * 100) + '%';
+    diffFiles.forEach(function(f, i){
+      var start = 500 + i*160;
+      var fp = easeOutExpo(clamp((localT-start)/300, 0, 1));
+      f.style.opacity = fp;
+      f.style.transform = 'translateY(' + ((1-fp)*8) + 'px)';
+    });
+  }
+
+  function renderTerminal(localT){
+    var out = '';
+    termLines.forEach(function(l, i){
+      var elapsed = localT - termStarts[i];
+      if(elapsed <= 0) return;
+      var chars = Math.min(l.text.length, Math.floor(elapsed/1000*CPS));
+      var shown = l.text.slice(0, chars);
+      var isTyping = chars < l.text.length;
+      var cls = l.cls ? ' class="'+l.cls+'"' : '';
+      out += '<div'+cls+'>' + shown + (isTyping ? '<span class="cursor blink"></span>' : '') + '</div>';
+    });
+    termBody.innerHTML = out;
+  }
+
+  var mergeFiredFor = -1;
+  function renderMerge(localT, sceneJustEntered){
+    var p = easeOutBack(clamp(localT/480, 0, 1));
+    mergeBadge.style.transform = 'scale(' + Math.max(0,p) + ') rotate(' + ((1-clamp(localT/480,0,1))*-10) + 'deg)';
+    if(sceneJustEntered){
+      confetti.classList.remove('is-firing');
+      void confetti.offsetWidth;
+      confetti.classList.add('is-firing');
+    }
+  }
+
+  function render(){
+    var idx = sceneIndexAt(t);
+    var scene = SCENES[idx];
+    var localT = t - offsets[idx];
+    var justEntered = idx !== lastSceneIdx;
+
+    SCENES.forEach(function(s, i){
+      var el = els[s.id];
+      if(i === idx){
+        el.classList.add('is-live');
+        applyTransition(el, el.getAttribute('data-transition'), localT, s.duration);
+      } else {
+        el.classList.remove('is-live');
+      }
+    });
+
+    if(idx === 0) renderTitle(localT);
+    else if(idx === 1) renderTasks(localT);
+    else if(idx === 2) renderDiff(localT);
+    else if(idx === 3) renderTerminal(localT);
+    else if(idx === 4) renderMerge(localT, justEntered);
+
+    if(justEntered){
+      sceneTitleEl.textContent = scene.id.replace('scene-','').replace(/^\w/, function(c){return c.toUpperCase();});
+      sceneTitleEl.classList.add('is-shown');
+      if(captionsOn) captions.textContent = scene.caption;
+    }
+    lastSceneIdx = idx;
+
+    var pct = (t/TOTAL*100);
+    scrubberFill.style.width = pct + '%';
+    scrubberThumb.style.left = pct + '%';
+    timeCurrent.textContent = fmt(t);
+  }
+
+  function loop(ts){
+    if(lastFrame === null) lastFrame = ts;
+    var dt = ts - lastFrame;
+    lastFrame = ts;
+    if(isPlaying && provider === 'hyperframes'){
+      t += dt;
+      if(t >= TOTAL) t = t % TOTAL;
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---- transport ----
+  function setPlaying(v){
+    isPlaying = v;
+    playBtn.setAttribute('aria-label', v ? 'Pause' : 'Play');
+    playIcon.innerHTML = v
+      ? '<rect x="3" y="2" width="4" height="12" rx="1"/><rect x="9" y="2" width="4" height="12" rx="1"/>'
+      : '<path d="M4 2l10 6-10 6z"/>';
+  }
+  playBtn.addEventListener('click', function(){ setPlaying(!isPlaying); });
+
+  function seekFromEvent(e){
+    var rect = scrubber.getBoundingClientRect();
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    var p = clamp(x/rect.width, 0, 1);
+    t = p * TOTAL;
+    lastSceneIdx = -1; // force scene-title/caption refresh on seek
+    render();
+  }
+  var dragging = false;
+  scrubber.addEventListener('pointerdown', function(e){
+    if(provider !== 'hyperframes') return;
+    dragging = true; scrubber.setPointerCapture(e.pointerId); seekFromEvent(e);
+  });
+  scrubber.addEventListener('pointermove', function(e){ if(dragging) seekFromEvent(e); });
+  scrubber.addEventListener('pointerup', function(){ dragging = false; });
+
+  // ---- avatar narrator ----
+  var captionsOn = false;
+  avatarToggle.addEventListener('click', function(){
+    captionsOn = !captionsOn;
+    avatarToggle.setAttribute('aria-pressed', String(captionsOn));
+    avatarWrap.hidden = !captionsOn;
+    captions.hidden = !captionsOn;
+    avatarWrap.classList.toggle('is-talking', captionsOn);
+    if(captionsOn) captions.textContent = SCENES[sceneIndexAt(t)].caption;
+  });
+
+  // ---- provider cascade ----
+  var providerLabel = { sora:'Sora', wavespeed:'Wavespeed' };
+  cascadeBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      cascadeBtns.forEach(function(b){ b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+      provider = btn.getAttribute('data-provider');
+      if(provider === 'hyperframes'){
+        providerLock.classList.remove('is-shown');
+      } else {
+        setPlaying(false);
+        lockTitle.textContent = 'Would render via ' + providerLabel[provider];
+        providerLock.classList.add('is-shown');
+      }
+    });
+  });
+
+  // ---- trigger chips ----
+  document.getElementById('triggers').addEventListener('click', function(e){
+    var chip = e.target.closest('.chip');
+    if(!chip) return;
+    document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('is-active'); });
+    chip.classList.add('is-active');
+  });
+
+})();
+</script>
+</body>
+</html>
