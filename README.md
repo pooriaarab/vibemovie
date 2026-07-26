@@ -7,9 +7,9 @@ Transforms your AI-assisted coding activity into a cinematic, narrated video —
 ## Install
 
 ```bash
-npm i -g @pooriaarab/vibemovie
+npm i -g vibemovie-cli
 # or run it directly
-npx @pooriaarab/vibemovie --help
+npx vibemovie-cli --help
 ```
 
 ## Quick start
@@ -45,7 +45,7 @@ Input is a JSON array of events (or `{ "events": [...] }`):
 Library usage:
 
 ```ts
-import { renderMovie } from '@pooriaarab/vibemovie';
+import { renderMovie } from 'vibemovie-cli';
 
 const { html, path } = await renderMovie(events, {
   ratio: '16:9',            // '16:9' | '9:16' | '1:1'
@@ -99,7 +99,7 @@ narrated by your avatar instead of an abstract summary.
 ## Distribution
 
 - **CLI** — `vibemovie render session.json` (today) · `--session <id>` / `--repo .` (planned)
-- **npm package** — `npm install -g @pooriaarab/vibemovie`
+- **npm package** — `npm install -g vibemovie-cli`
 - **MCP server** — `vibemovie mcp` exposes a `render` tool your agent can call
 - **Claude Code skill** — `/vibemovie` to render your last session
 - **skills.sh** — Listed on skills.sh marketplace
