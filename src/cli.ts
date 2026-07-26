@@ -219,7 +219,7 @@ export async function main(argv: readonly string[]): Promise<void> {
 }
 
 const invokedAsScript =
-  typeof process.argv[1] === 'string' && import.meta.url === pathToFileURL(process.argv[1]).href;
+  typeof process.argv[1] === 'string';
 
 if (invokedAsScript) {
   main(process.argv.slice(2)).catch((err: unknown) => {
