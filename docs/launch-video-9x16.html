@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vibemovie — launch (9:16)</title>
+<!--
+  THESIS: a ~20s cinematic launch trailer, framed for a 1080x1920 vertical export.
+  The coding session is treated as a film worth watching; retro "cut-scenes"
+  interrupt the montage — an 80s VHS/synthwave REPLAY card and a 50s
+  black-and-white newsreel — before the product resolves out of the build.
+  OWN-WORLD: near-black theater stock (#0a0908) + warm gold accent (#d9a94e),
+  committed vibemovie palette. The retro frames run their own palettes on purpose:
+  neon magenta/cyan chrome for the tape, pure grayscale for the newsreel. Serif is
+  the emotional voice; monospace carries only fact — HUD data, timecodes, and the
+  real install command. Vertical cut goes full-bleed (no letterbox strip);
+  grain, vignette and iris live inside the film plane.
+  MOTION: one authored arc — blur-in title cards → hard-cut montage punches
+  interleaved with the retro cut-scenes → iris breath → iris-open product reveal
+  with a single gold light-sweep. One warm flash only, autoplay + seamless loop.
+  SELF-CONTAINED: system fonts only, inline CSS/JS/SVG, zero network.
+  DEV HOOK: ?t=<ms> starts the clock mid-timeline; &freeze=1 renders that frame
+  statically (used for frame-by-frame visual QA).
+-->
+<style>
+  :root{
+    --bg:        #0a0908;
+    --ink:       #f2ede1;
+    --ink-soft:  #908674;   /* >=4.5:1 on black, for small secondary text */
+    --ink-dim:   #a89e8c;
+    --gold:      #d9a94e;
+    --gold-dim:  #8a6a2f;
+    --add:       #7fae8a;
+    --remove:    #b25a45;
+    --merge:     #a084d6;
+    /* 80s tape */
+    --neon-pink: #ff2d78;
+    --neon-cyan: #54f0ff;
+    --vhs-sky0:  #0b0218;
+    /* 50s newsreel */
+    --news-ink:  #ece9dd;
+    --news-dim:  #b3afa2;
+    --ease:      cubic-bezier(0.16, 1, 0.3, 1);
+    --serif:     ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --mono:      ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans:      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: #000;                 /* pure black surround */
+    overflow: hidden;
+  }
+  body{ font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+
+  /* ---------- stage (9:16 export frame) ---------- */
+  .stage{
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    aspect-ratio: 9 / 16;
+    width: min(100vw, calc(100vh * 9 / 16));
+    background: #000;
+    overflow: hidden;
+  }
+
+  /* ---------- film plane (full-bleed vertical) ---------- */
+  .plane{
+    position: absolute; inset: 0;
+    container-type: inline-size;      /* cqw scales type to the frame, not the viewport */
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* hairline edge so the film plane reads against the surround */
+  .frame{
+    position: absolute; inset: 0; pointer-events: none; z-index: 9;
+    box-shadow:
+      inset 0 0 0 1px rgba(217,169,78,0.05),
+      inset 0 0 120px 10px rgba(0,0,0,0.55);
+  }
+
+  /* ---------- analog texture ---------- */
+  .grain, .retro-grain{
+    position: absolute; inset: -60%;          /* oversized so jitter reveals fresh noise */
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 180px 180px;
+    mix-blend-mode: overlay;
+    will-change: transform;
+  }
+  .grain{ z-index: 8; opacity: .08; }
+  .retro-grain{ z-index: 7; opacity: .16; }   /* heavier stock inside the cut-scenes */
+  @media (prefers-reduced-motion: no-preference){
+    .grain{ animation: grain-shift .7s steps(5) infinite; }
+    .retro-grain{ animation: grain-shift .5s steps(4) infinite; }
+  }
+  @keyframes grain-shift{
+    0%   { transform: translate(0, 0); }
+    20%  { transform: translate(-3%, 2%); }
+    40%  { transform: translate(2%, -3%); }
+    60%  { transform: translate(-2%, -2%); }
+    80%  { transform: translate(3%, 1%); }
+    100% { transform: translate(0, 0); }
+  }
+
+  .vignette{
+    position: absolute; inset: 0; pointer-events: none; z-index: 7;
+    background: radial-gradient(125% 100% at 50% 50%, transparent 52%, rgba(0,0,0,0.5) 100%);
+  }
+
+  /* iris closes during the "breath" and opens on the product reveal */
+  .iris{
+    position: absolute; inset: 0; pointer-events: none; z-index: 10;
+    background: radial-gradient(58% 58% at 50% 50%, transparent 0%, rgba(0,0,0,0.65) 55%, #000 78%);
+    opacity: 0;
+  }
+
+  /* single warm flash into the montage */
+  .flash{
+    position: absolute; inset: 0; pointer-events: none; z-index: 11;
+    background: #f2ede1;
+    opacity: 0;
+  }
+
+  /* ---------- layers (mutually exclusive — exactly one .is-on) ---------- */
+  .layer{
+    position: absolute; inset: 0; z-index: 6;
+    display: none;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0 8%;
+  }
+  .layer.is-on{ display: flex; }
+
+  /* ---------- title cards (serif voice) ---------- */
+  .card{
+    display: none;
+    flex-direction: column; align-items: center;
+    will-change: transform, opacity, filter;
+  }
+  .card.is-on{ display: flex; }
+  .card .kicker{
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 3.6cqw;
+    color: var(--gold);
+    letter-spacing: 0.02em;
+    margin-bottom: 2cqw;
+    opacity: 0;                          /* driven by JS */
+  }
+  .card .line{
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(2rem, 10.5cqw, 10rem);
+    line-height: 1.06;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    max-width: 20ch;
+  }
+  .card .line em{ font-style: italic; color: var(--gold); }
+
+  /* ---------- retro cut-scenes ---------- */
+  .retro{
+    display: none;
+    position: absolute; inset: 0;
+    overflow: hidden;
+    will-change: transform, opacity;
+  }
+  .retro.is-on{ display: block; }
+
+  /* scanlines shared by both retro frames */
+  .retro-scan{
+    position: absolute; inset: 0; pointer-events: none; z-index: 6;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px);
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .retro-scan{ animation: scan-drift .5s steps(3) infinite; }
+  }
+  @keyframes scan-drift{ to{ background-position-y: 3px; } }
+
+  /* --- 80s VHS / synthwave --- */
+  .vhs{ background: var(--vhs-sky0); }
+  .vhs-sky{
+    position: absolute; left: 0; right: 0; top: 0; height: 60%; z-index: 1;
+    background: linear-gradient(180deg,
+      #0b0218 0%, #240736 42%, #5a1160 58%,
+      #c22b7a 72%, #ff7a4f 86%, #ffc76a 100%);
+  }
+  .vhs-sun{
+    position: absolute; z-index: 2;
+    left: 50%; bottom: 36%;                 /* dips just below the horizon line */
+    width: 38cqw; height: 38cqw;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffe9a3 0%, #ffb15e 34%, #ff5e8a 68%, #e83e8c 100%);
+    box-shadow: 0 0 6cqw 1.6cqw rgba(255, 94, 138, 0.35);
+    /* blind-slats cut into the lower half, gaps widening downward */
+    -webkit-mask-image: linear-gradient(180deg,
+      #000 0 55%,
+      transparent 55% 57.5%, #000 57.5% 66%,
+      transparent 66% 69%,   #000 69% 77%,
+      transparent 77% 80.5%, #000 80.5% 87%,
+      transparent 87% 91%,   #000 91% 96%,
+      transparent 96% 100%);
+            mask-image: linear-gradient(180deg,
+      #000 0 55%,
+      transparent 55% 57.5%, #000 57.5% 66%,
+      transparent 66% 69%,   #000 69% 77%,
+      transparent 77% 80.5%, #000 80.5% 87%,
+      transparent 87% 91%,   #000 91% 96%,
+      transparent 96% 100%);
+  }
+  .vhs-ground{
+    position: absolute; left: 0; right: 0; bottom: 0; height: 40%; z-index: 3;
+    background: linear-gradient(180deg,
+      rgba(255, 70, 120, 0.30) 0%, rgba(22, 4, 42, 0.94) 34%, #0b0218 100%);
+    overflow: hidden;
+  }
+  .vhs-ground::before{                      /* horizon glow line */
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 2;
+    background: linear-gradient(90deg,
+      transparent, #ff9ed2 20%, #ffd6f4 50%, #ff9ed2 80%, transparent);
+    box-shadow: 0 0 1.6cqw 0.3cqw rgba(255, 120, 190, 0.8);
+  }
+  .vhs-persp{
+    position: absolute; left: -40%; right: -40%; top: 0; height: 220%;
+    transform: perspective(40cqw) rotateX(58deg);
+    transform-origin: top center;
+  }
+  .vhs-persp > div{ position: absolute; inset: 0; }
+  .vhs-grid-v{
+    background-image: repeating-linear-gradient(90deg,
+      rgba(255, 110, 190, 0.55) 0 2px, transparent 2px 8cqw);
+  }
+  .vhs-grid-h{
+    background-image: repeating-linear-gradient(0deg,
+      rgba(255, 110, 190, 0.6) 0 2px, transparent 2px 4cqw);
+    background-size: 100% 4cqw;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .vhs-grid-h{ animation: grid-run .7s linear infinite; }
+  }
+  @keyframes grid-run{ to{ background-position-y: 4cqw; } }
+
+  .vhs-vig{
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(115% 95% at 50% 46%, transparent 55%, rgba(6, 0, 16, 0.72) 100%);
+  }
+  .vhs-track{                               /* tracking band sweeping down once per showing */
+    position: absolute; left: 0; right: 0; top: -8%; height: 6%; z-index: 6;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent);
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .vhs-track{ animation: vhs-track 1.1s linear infinite; }
+  }
+  @keyframes vhs-track{ to{ top: 104%; } }
+
+  .vhs-title{
+    position: absolute; left: 0; right: 0; top: 42%; z-index: 4;
+    transform: translateY(-50%);
+    text-align: center;
+  }
+  .vhs-kicker{
+    font-family: var(--mono);
+    font-size: 2.7cqw;
+    letter-spacing: 0.42em; text-indent: 0.42em;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 1.2cqw rgba(84, 240, 255, 0.8);
+    margin-bottom: 2.4cqw;
+  }
+  .vhs-word{
+    position: relative; display: inline-block;
+    font-family: var(--sans);
+    font-weight: 800; font-style: italic;
+    font-size: 15cqw;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    color: transparent;
+    background-image: linear-gradient(180deg,
+      #ffffff 0%, #bfe9ff 28%, #5a6cff 46%,
+      #241448 50%, #ff7ad9 54%, #ffb3ec 72%, #ffffff 100%);
+    -webkit-background-clip: text;
+            background-clip: text;
+    filter: drop-shadow(0 0 2.4cqw rgba(255, 45, 150, 0.35));
+  }
+  .vhs-word::before, .vhs-word::after{      /* chromatic fringes */
+    content: attr(data-text);
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .vhs-word::before{ color: rgba(255, 45, 120, 0.55); transform: translateX(-0.3cqw); }
+  .vhs-word::after { color: rgba(84, 240, 255, 0.55); transform: translateX(0.3cqw); }
+
+  .vhs-hud{
+    position: absolute; inset: 0; z-index: 5; pointer-events: none;
+    font-family: var(--mono);
+    color: #d7f7e8;
+    text-shadow: 0 0 0.9cqw rgba(120, 255, 200, 0.6);
+  }
+  .vhs-hud span{ position: absolute; font-size: 2.9cqw; letter-spacing: 0.12em; white-space: nowrap; }
+  .vhs-hud .hud-tl{ top: 4%; left: 6%; }
+  .vhs-hud .hud-tr{ top: 4%; right: 6%; }
+  .vhs-hud .hud-bl{ bottom: 4%; left: 6%; }
+
+  /* --- 50s black-and-white newsreel --- */
+  .news{
+    background: #0c0c0b;
+    filter: grayscale(1) contrast(1.08);    /* no gold leaks in — pure B&W stock */
+  }
+  .news-weave{ position: absolute; inset: 0; }
+  @media (prefers-reduced-motion: no-preference){
+    .news-weave{ animation: news-weave .5s steps(2) infinite; }
+  }
+  @keyframes news-weave{
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(0.14cqw, -0.1cqw); }
+    50%  { transform: translate(-0.12cqw, 0.12cqw); }
+    75%  { transform: translate(0.1cqw, 0.08cqw); }
+    100% { transform: translate(0, 0); }
+  }
+  .news-bg{
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 105% at 50% 42%, #262620 0%, #141411 52%, #060605 100%);
+  }
+  .news-frame{                              /* classic double-rule title-card border */
+    position: absolute; inset: 3.5% 4.5%; z-index: 2;
+    border: 0.4cqw solid rgba(236, 233, 222, 0.75);
+    box-shadow:
+      inset 0 0 0 0.8cqw #0c0c0b,
+      inset 0 0 0 1.2cqw rgba(236, 233, 222, 0.5);
+  }
+  .news-inner{
+    position: absolute; inset: 0; z-index: 3;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0 8%;
+  }
+  .news-mast{
+    display: flex; align-items: center; gap: 2cqw;
+    font-family: var(--serif);
+    font-size: 3.2cqw;
+    letter-spacing: 0.34em; text-indent: 0.34em;
+    color: #d8d4c6;
+    white-space: nowrap;
+  }
+  .news-mast::before, .news-mast::after{
+    content: ""; width: 10cqw; height: 1px;
+    background: linear-gradient(90deg, transparent, #d8d4c6, transparent);
+  }
+  .news-extra{
+    margin-top: 4.4cqw;
+    font-family: var(--serif); font-weight: 700;
+    font-size: 4.4cqw;
+    letter-spacing: 0.22em; text-indent: 0.22em;
+    color: var(--news-ink);
+  }
+  .news-head{
+    margin-top: 3cqw;
+    font-family: var(--serif); font-weight: 700;
+    font-size: 11cqw;
+    line-height: 1.04;
+    letter-spacing: 0.01em;
+    color: #f0ede2;
+    max-width: 12ch;
+  }
+  .news-rule{
+    margin-top: 4.4cqw;
+    width: 38cqw; height: 1.1cqw;
+    background: linear-gradient(180deg,
+      #d8d4c6 0 28%, transparent 28% 72%, #d8d4c6 72% 100%);
+  }
+  .news-sub{
+    margin-top: 4.4cqw;
+    font-family: var(--serif); font-style: italic;
+    font-size: 3.4cqw;
+    color: var(--news-dim);
+    max-width: 24ch;
+  }
+  .news-scratches i{
+    position: absolute; top: 0; bottom: 0; width: 1px; z-index: 4;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.14), transparent);
+  }
+  .news-scratches i:nth-child(1){ left: 18%; }
+  .news-scratches i:nth-child(2){ left: 76%; }
+  @media (prefers-reduced-motion: no-preference){
+    .news-scratches i:nth-child(1){ animation: scratch-a .4s steps(2) infinite alternate; }
+    .news-scratches i:nth-child(2){ animation: scratch-b .55s steps(2) infinite alternate; }
+  }
+  @keyframes scratch-a{ from{ transform: translateX(0); } to{ transform: translateX(0.5cqw); } }
+  @keyframes scratch-b{ from{ transform: translateX(0); } to{ transform: translateX(-0.6cqw); } }
+  .news-flicker{                            /* projector exposure flicker */
+    position: absolute; inset: 0; z-index: 5;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .news-flicker{ animation: news-flick .22s steps(2) infinite; }
+  }
+  @keyframes news-flick{ 0%{ opacity: 0; } 50%{ opacity: 0.12; } }
+
+  /* ---------- montage (hard-cut trailer beats) ---------- */
+  .montage{
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 2.6cqw;
+    will-change: transform, opacity;
+  }
+  .montage.is-on{ display: flex; }
+  .m-voice{                      /* serif emotional label */
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 5.6cqw;
+    color: var(--ink-dim);
+    letter-spacing: -0.01em;
+  }
+  .m-fact{                       /* mono data: the truth of the moment */
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .m-fact.big{ font-size: 20cqw; }
+  .m-fact.med{ font-size: 11cqw; }
+  .m-fact .plus{ color: var(--add); }
+  .m-fact .minus{ color: var(--remove); }
+  .m-fact .hash{ color: var(--ink-dim); }
+
+  .m-bar{
+    width: 64cqw; max-width: 78%;
+    height: 2.4cqw; min-height: 10px;
+    border-radius: 999px; overflow: hidden; display: flex;
+    background: #1a140d;
+    border: 1px solid #241d14;
+  }
+  .m-bar .add{ background: var(--add); height: 100%; width: 0%; }
+  .m-bar .remove{ background: var(--remove); height: 100%; width: 0%; }
+
+  .m-checks{ display: flex; gap: 3.6cqw; }
+  .m-checks svg{ width: 6.4cqw; height: 6.4cqw; }
+
+  .m-glyph{ width: 12cqw; height: 12cqw; color: var(--merge); transform-origin: center; }
+  .m-confetti{ position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+  .m-confetti i{
+    position: absolute; top: -8%;
+    width: 1.2cqw; height: 2.4cqw; min-width: 6px; min-height: 12px;
+    border-radius: 2px; opacity: 0;
+  }
+  .m-confetti.is-fire i{ animation: confetti-fall 1s ease-in forwards; }
+  @keyframes confetti-fall{
+    0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
+    100% { opacity: 0; transform: translateY(90cqw) rotate(320deg); }
+  }
+
+  .m-term{
+    font-family: var(--mono);
+    font-size: 6.8cqw;
+    color: var(--ink-dim);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .m-term .ok{ color: var(--add); }
+  .m-term .prompt{ color: var(--gold); }
+  .cursor{
+    display: inline-block; width: .5ch; height: 1em;
+    background: var(--gold); vertical-align: -.12em; margin-left: .15ch;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .cursor{ animation: blink 1s steps(1) infinite; }
+  }
+  @keyframes blink{ 50%{ opacity: 0; } }
+
+  /* ---------- end card (the product) ---------- */
+  .end{
+    flex-direction: column; align-items: center;
+    gap: 0;
+  }
+  .mark-wrap{ position: relative; }
+  .wordmark{
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(3rem, 17cqw, 17rem);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--ink);
+    will-change: transform, opacity, filter;
+  }
+  .wordmark em{ font-style: italic; color: var(--gold); }
+  /* the single gold light-sweep across the wordmark */
+  .shimmer{
+    position: absolute; inset: 0; pointer-events: none;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000, #000);
+            mask-image: linear-gradient(#000, #000);
+    opacity: 0;
+  }
+  .shimmer::after{
+    content: "";
+    position: absolute; top: 0; bottom: 0; left: -40%; width: 30%;
+    background: linear-gradient(100deg,
+      transparent 0%,
+      rgba(255,236,196,0.0) 35%,
+      rgba(255,236,196,0.55) 50%,
+      rgba(255,236,196,0.0) 65%,
+      transparent 100%);
+    transform: translateX(-30%) skewX(-14deg);
+    filter: blur(1px);
+  }
+  .shimmer.is-fire::after{ animation: sweep 1.15s var(--ease) forwards; }
+  @keyframes sweep{
+    0%   { transform: translateX(-30%) skewX(-14deg); }
+    100% { transform: translateX(420%) skewX(-14deg); }
+  }
+
+  .tagline{
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: clamp(1.2rem, 5cqw, 5rem);
+    color: var(--ink-soft);
+    letter-spacing: 0.01em;
+    margin-top: 4cqw;
+    will-change: opacity, transform;
+  }
+
+  .install{
+    margin-top: 7cqw;
+    display: inline-flex; align-items: center; gap: 1ch;
+    font-family: var(--mono);
+    font-size: clamp(1rem, 3.6cqw, 3.6rem);
+    color: var(--ink);
+    background: rgba(20,18,14,0.72);
+    border: 1px solid #2c2417;
+    border-radius: 999px;
+    padding: 2.2cqw 4.6cqw;
+    white-space: nowrap;
+    box-shadow: 0 10px 30px -16px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.03);
+    will-change: opacity, transform;
+  }
+  .install .prompt{ color: var(--gold); }
+
+  .suite{
+    margin-top: 6cqw;
+    font-family: var(--sans);
+    font-size: clamp(.8rem, 2.7cqw, 2.7rem);
+    font-weight: 500;
+    color: var(--ink-soft);
+    letter-spacing: 0.04em;
+    will-change: opacity;
+  }
+  .suite .sep{ color: var(--gold-dim); margin: 0 .6ch; }
+
+  /* ---------- reduced motion: neutralise the aggressive beats ---------- */
+  @media (prefers-reduced-motion: reduce){
+    .grain, .retro-grain, .retro-scan{ animation: none; }
+    .cursor, .m-confetti.is-fire i{ animation: none; }
+    .shimmer.is-fire::after{ animation: none; opacity: 0; }
+    .news-weave, .news-flicker, .news-scratches i,
+    .vhs-grid-h, .vhs-track{ animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="plane" id="plane">
+    <div class="frame"></div>
+    <div class="grain"></div>
+    <div class="vignette"></div>
+    <div class="iris" id="iris"></div>
+    <div class="flash" id="flash"></div>
+
+    <!-- LAYER: title cards -->
+    <div class="layer" id="layerCards">
+      <div class="card" data-card="0">
+        <div class="kicker">a film by your terminal</div>
+        <div class="line">Every coding session&hellip;</div>
+      </div>
+      <div class="card" data-card="1">
+        <div class="kicker">roll the recap</div>
+        <div class="line">&hellip;is a <em>story</em> worth watching.</div>
+      </div>
+    </div>
+
+    <!-- LAYER: retro cut-scenes -->
+    <div class="layer" id="layerRetro">
+      <!-- 80s VHS / synthwave -->
+      <div class="retro vhs" data-retro="vhs">
+        <div class="vhs-sky"></div>
+        <div class="vhs-sun"></div>
+        <div class="vhs-ground">
+          <div class="vhs-persp">
+            <div class="vhs-grid-v"></div>
+            <div class="vhs-grid-h"></div>
+          </div>
+        </div>
+        <div class="vhs-title">
+          <div class="vhs-kicker">BE KIND, REWIND</div>
+          <div class="vhs-word" data-text="REPLAY">REPLAY</div>
+        </div>
+        <div class="vhs-hud">
+          <span class="hud-tl">&#9654; PLAY</span>
+          <span class="hud-tr">SP 0:07:42</span>
+          <span class="hud-bl">SESSION_042.VHS</span>
+        </div>
+        <div class="vhs-vig"></div>
+        <div class="vhs-track"></div>
+        <div class="retro-scan"></div>
+        <div class="retro-grain"></div>
+      </div>
+
+      <!-- 50s black-and-white newsreel -->
+      <div class="retro news" data-retro="news">
+        <div class="news-weave">
+          <div class="news-bg"></div>
+          <div class="news-frame">
+            <div class="news-inner">
+              <div class="news-mast">THE DAILY COMMIT</div>
+              <div class="news-extra">EXTRA! EXTRA!</div>
+              <div class="news-head">ALL 42 TESTS PASS</div>
+              <div class="news-rule"></div>
+              <div class="news-sub">local developer ships again &mdash; film at eleven</div>
+            </div>
+          </div>
+          <div class="news-scratches"><i></i><i></i></div>
+          <div class="retro-scan"></div>
+          <div class="retro-grain"></div>
+          <div class="news-flicker"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAYER: montage -->
+    <div class="layer" id="layerMontage">
+      <div class="montage" data-slide="0">
+        <div class="m-fact big" id="mTasksNum">3</div>
+        <div class="m-voice">tasks done</div>
+        <div class="m-checks" id="mChecks"></div>
+      </div>
+
+      <div class="montage" data-slide="1">
+        <div class="m-voice">lines moved</div>
+        <div class="m-bar"><span class="add" id="mBarAdd"></span><span class="remove" id="mBarRemove"></span></div>
+        <div class="m-fact med"><span class="plus">+340</span>&nbsp;&nbsp;<span class="minus">&minus;88</span></div>
+      </div>
+
+      <div class="montage" data-slide="2">
+        <div class="m-term"><span class="prompt">$</span> test <span class="ok">42 passed</span><span class="cursor"></span></div>
+        <div class="m-voice">all green</div>
+      </div>
+
+      <div class="montage" data-slide="3" style="position:relative;">
+        <svg class="m-glyph" id="mGlyph" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+          <circle cx="14" cy="12" r="4"/>
+          <circle cx="14" cy="36" r="4"/>
+          <circle cx="34" cy="12" r="4"/>
+          <path d="M14 16v12a8 8 0 0 0 8 8h4"/>
+          <path d="M34 16v4"/>
+        </svg>
+        <div class="m-fact big"><span class="hash">#</span>42</div>
+        <div class="m-voice">merged into main</div>
+        <div class="m-confetti" id="mConfetti"></div>
+      </div>
+    </div>
+
+    <!-- LAYER: end card -->
+    <div class="layer end" id="layerEnd">
+      <div class="mark-wrap" id="markWrap">
+        <div class="wordmark" id="wordmark">vibe<em>movie</em></div>
+        <div class="shimmer" id="shimmer"></div>
+      </div>
+      <div class="tagline" id="tagline">your session, as a movie</div>
+      <div class="install" id="install">
+        <span class="prompt">$</span><span>npx vibemovie</span>
+      </div>
+      <div class="suite" id="suite">part of the Vibe Suite<span class="sep">◆</span>local-first</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------------- timeline (19.9s, seamless loop) ---------------- */
+  var BEATS = [
+    { id:"open",    group:"none",    dur: 500  },   // cold open — black, grain settles
+    { id:"cardA",   group:"cards",   dur: 2800, card: 0 },
+    { id:"cardB",   group:"cards",   dur: 3000, card: 1 },
+    { id:"flash",   group:"none",    dur: 180, flash: true },  // single warm flash into montage
+    { id:"mTasks",  group:"montage", dur: 620, slide: 0 },
+    { id:"vhs",     group:"retro",   dur: 1100, retro: "vhs" },  // cut-scene: 80s tape replay
+    { id:"mDiff",   group:"montage", dur: 560, slide: 1 },
+    { id:"mTests",  group:"montage", dur: 540, slide: 2 },
+    { id:"news",    group:"retro",   dur: 1200, retro: "news" }, // cut-scene: 50s newsreel
+    { id:"mPr",     group:"montage", dur: 700, slide: 3 },
+    { id:"breath",  group:"none",    dur: 700  },   // iris closes — rising tension
+    { id:"end",     group:"end",     dur: 7600 },   // iris opens — the product
+    { id:"out",     group:"none",    dur: 400  }    // tail to black → loops to open
+  ];
+
+  var offsets = [], acc = 0;
+  BEATS.forEach(function(b){ offsets.push(acc); acc += b.dur; });
+  var TOTAL = acc;   // 19900
+
+  /* ---------------- refs ---------------- */
+  var irisEl      = document.getElementById("iris");
+  var flashEl     = document.getElementById("flash");
+  var layerCards  = document.getElementById("layerCards");
+  var layerRetro  = document.getElementById("layerRetro");
+  var layerMont   = document.getElementById("layerMontage");
+  var layerEnd    = document.getElementById("layerEnd");
+  var cards       = layerCards.querySelectorAll(".card");
+  var retroFrames = layerRetro.querySelectorAll(".retro");
+  var slides      = layerMont.querySelectorAll(".montage");
+  var wordmark    = document.getElementById("wordmark");
+  var shimmer     = document.getElementById("shimmer");
+  var tagline     = document.getElementById("tagline");
+  var install     = document.getElementById("install");
+  var suite       = document.getElementById("suite");
+  var mChecks     = document.getElementById("mChecks");
+  var mBarAdd     = document.getElementById("mBarAdd");
+  var mBarRemove  = document.getElementById("mBarRemove");
+  var mGlyph      = document.getElementById("mGlyph");
+  var mConfetti   = document.getElementById("mConfetti");
+
+  /* build check marks (draw-in stroke) + confetti once */
+  var checkSVG = '<svg viewBox="0 0 20 20" fill="none">'
+    + '<circle cx="10" cy="10" r="9" stroke="#3a3024" stroke-width="1.4"/>'
+    + '<path d="M5.5 10.2l3 3 6-6.4" stroke="' + '#7fae8a'
+    + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>';
+  mChecks.innerHTML = checkSVG + checkSVG + checkSVG;
+  var checkPaths = mChecks.querySelectorAll("path");
+
+  var confettiColors = ["var(--gold)", "var(--add)", "var(--remove)", "var(--merge)"];
+  (function buildConfetti(){
+    var frag = "";
+    for (var i = 0; i < 12; i++){
+      var left = 12 + Math.random() * 76;
+      var c = confettiColors[i % confettiColors.length];
+      var d = (Math.random() * 0.25).toFixed(2);
+      frag += '<i style="left:' + left + '%;background:' + c + ';animation-delay:' + d + 's;"></i>';
+    }
+    mConfetti.innerHTML = frag;
+  })();
+
+  /* ---------------- math ---------------- */
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function easeOutExpo(x){ return x >= 1 ? 1 : 1 - Math.pow(2, -10 * x); }
+  function easeInExpo(x){ return x <= 0 ? 0 : Math.pow(2, 10 * x - 10); }
+  function easeOutBack(x){
+    var c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+  }
+
+  function beatAt(time){
+    for (var i = BEATS.length - 1; i >= 0; i--){
+      if (time >= offsets[i]) return i;
+    }
+    return 0;
+  }
+
+  function setLayer(group){
+    layerCards.classList.toggle("is-on", group === "cards");
+    layerRetro.classList.toggle("is-on", group === "retro");
+    layerMont.classList.toggle("is-on", group === "montage");
+    layerEnd.classList.toggle("is-on", group === "end");
+  }
+
+  /* ---------------- per-beat renderers ---------------- */
+  function renderCard(i, local, dur){
+    var card = cards[i];
+    cards.forEach(function(c, idx){ c.classList.toggle("is-on", idx === i); });
+    var inWin = 820, outWin = 880;
+    var line = card.querySelector(".line");
+    var kicker = card.querySelector(".kicker");
+    var opacity = 1, blur = 0, ty = 0, scale = 1, kOp = 1;
+
+    if (local < inWin){
+      var p = easeOutExpo(local / inWin);
+      opacity = p; blur = (1 - p) * 20; ty = (1 - p) * 14; scale = 0.985 + 0.015 * p;
+      kOp = easeOutExpo(clamp((local - 420) / 520, 0, 1));
+    } else if (local > dur - outWin){
+      var q = easeInExpo((local - (dur - outWin)) / outWin);
+      opacity = 1 - q; blur = q * 16; ty = -q * 10; scale = 1 - 0.012 * q;
+      kOp = clamp(1 - q * 1.3, 0, 1);
+    }
+    if (reduceMotion){ blur = 0; ty = 0; scale = 1; }
+    line.style.opacity = opacity;
+    line.style.filter = blur > 0.1 ? "blur(" + blur.toFixed(2) + "px)" : "none";
+    line.style.transform = "translateY(" + ty.toFixed(2) + "px) scale(" + scale.toFixed(4) + ")";
+    kicker.style.opacity = kOp;
+  }
+
+  function renderRetro(kind, local){
+    retroFrames.forEach(function(f){
+      f.classList.toggle("is-on", f.getAttribute("data-retro") === kind);
+    });
+    // hard-cut entrance: near-instant opacity + a quick scale punch
+    var active = layerRetro.querySelector(".retro.is-on");
+    var inWin = reduceMotion ? 1 : 70;
+    var pop = reduceMotion ? 1 : easeOutExpo(clamp(local / 300, 0, 1));
+    active.style.opacity = clamp(local / inWin, 0, 1);
+    active.style.transform = "scale(" + (1.07 - 0.07 * pop).toFixed(4) + ")";
+  }
+
+  function renderMontage(i, local, dur, justEntered){
+    slides.forEach(function(s, idx){ s.classList.toggle("is-on", idx === i); });
+    // hard-cut entrance: near-instant opacity + a quick scale punch
+    var inWin = reduceMotion ? 1 : 90;
+    var pop = reduceMotion ? 1 : easeOutExpo(clamp(local / 240, 0, 1));
+    var op = clamp(local / inWin, 0, 1);
+    var scale = 1.16 - 0.16 * pop;
+    slides[i].style.opacity = op;
+    slides[i].style.transform = "scale(" + scale.toFixed(4) + ")";
+
+    // per-slide internal life
+    if (i === 0){            // tasks: checks draw in, staggered
+      checkPaths.forEach(function(pth, k){
+        var start = 70 + k * 80;
+        var p = easeOutExpo(clamp((local - start) / 200, 0, 1));
+        pth.setAttribute("stroke-dashoffset", String(1 - p));
+      });
+    } else if (i === 1){     // diff: bars slam
+      var pAdd = easeOutExpo(clamp(local / 280, 0, 1));
+      var pRem = easeOutExpo(clamp((local - 200) / 240, 0, 1));
+      mBarAdd.style.width = (pAdd * (340 / 428) * 100) + "%";
+      mBarRemove.style.width = (pRem * (88 / 428) * 100) + "%";
+    } else if (i === 3){     // pr: glyph pop + confetti
+      var g = easeOutBack(clamp(local / 360, 0, 1));
+      mGlyph.style.transform = "scale(" + Math.max(0, g).toFixed(3) + ")";
+      if (justEntered && !reduceMotion){
+        mConfetti.classList.remove("is-fire");
+        void mConfetti.offsetWidth;
+        mConfetti.classList.add("is-fire");
+      }
+    }
+  }
+
+  function renderEnd(local, dur, justEntered){
+    // sub-timeline for the layered reveal
+    var wmP  = easeOutExpo(clamp(local / 900, 0, 1));
+    var tgP  = easeOutExpo(clamp((local - 640) / 720, 0, 1));
+    var inP  = easeOutExpo(clamp((local - 1400) / 760, 0, 1));
+    var suP  = easeOutExpo(clamp((local - 2150) / 620, 0, 1));
+    // tail fade-out so the loop lands on black
+    var outQ = easeInExpo(clamp((local - (dur - 480)) / 480, 0, 1));
+
+    function tail(op){ return clamp(op * (1 - outQ), 0, 1); }
+
+    if (reduceMotion){
+      wmP = 1; tgP = 1; inP = 1; suP = 1;
+    }
+    var wmBlur = reduceMotion ? 0 : (1 - wmP) * 18;
+    wordmark.style.opacity = tail(wmP);
+    wordmark.style.filter = wmBlur > 0.1 ? "blur(" + wmBlur.toFixed(2) + "px)" : "none";
+    wordmark.style.transform = "translateY(" + ((1 - wmP) * 16).toFixed(2) + "px) scale(" + (0.985 + 0.015 * wmP).toFixed(4) + ")";
+
+    tagline.style.opacity = tail(tgP);
+    tagline.style.transform = "translateY(" + ((1 - tgP) * 10).toFixed(2) + "px)";
+
+    install.style.opacity = tail(inP);
+    install.style.transform = "translateY(" + ((1 - inP) * 12).toFixed(2) + "px)";
+
+    suite.style.opacity = tail(suP);
+
+    if (justEntered && !reduceMotion){
+      shimmer.classList.remove("is-fire");
+      void shimmer.offsetWidth;
+      // fire the sweep right as the wordmark finishes settling
+      setTimeout(function(){ shimmer.classList.add("is-fire"); }, 520);
+    }
+  }
+
+  function renderFlash(beat, local){
+    if (!beat.flash){ flashEl.style.opacity = 0; return; }
+    if (reduceMotion){ flashEl.style.opacity = 0; return; }
+    // single warm pulse: up by 60ms, down by 180ms
+    var op;
+    if (local < 60) op = (local / 60) * 0.5;
+    else op = (1 - (local - 60) / 120) * 0.5;
+    flashEl.style.opacity = clamp(op, 0, 0.5);
+  }
+
+  function renderIris(idx, local){
+    var beat = BEATS[idx], op = 0;
+    if (beat.id === "breath"){
+      op = easeInExpo(clamp(local / beat.dur, 0, 1));        // close
+    } else if (beat.id === "end"){
+      op = 1 - easeOutExpo(clamp(local / 240, 0, 1));        // open
+    }
+    irisEl.style.opacity = reduceMotion ? 0 : op;
+  }
+
+  /* ---------------- main loop ---------------- */
+  var q = new URLSearchParams(location.search);
+  var t = (parseFloat(q.get("t")) || 0) % TOTAL;   // dev hook: ?t=<ms> seeks
+  var freeze = q.get("freeze") === "1";            // dev hook: &freeze=1 holds the frame
+  var last = null, lastIdx = -1;
+
+  function render(){
+    var idx = beatAt(t);
+    var beat = BEATS[idx];
+    var local = t - offsets[idx];
+    var justEntered = idx !== lastIdx;
+
+    setLayer(beat.group);
+
+    if (beat.group === "cards")        renderCard(beat.card, local, beat.dur);
+    else if (beat.group === "retro")   renderRetro(beat.retro, local);
+    else if (beat.group === "montage") renderMontage(beat.slide, local, beat.dur, justEntered);
+    else if (beat.group === "end")     renderEnd(local, beat.dur, justEntered);
+
+    renderFlash(beat, local);
+    renderIris(idx, local);
+
+    lastIdx = idx;
+  }
+
+  function loop(ts){
+    if (last === null) last = ts;
+    var dt = ts - last;
+    last = ts;
+    t += dt;
+    if (t >= TOTAL) t -= TOTAL;     // seamless loop (black → black)
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // hide all layers initially, then start
+  setLayer("none");
+  if (freeze){
+    render();
+  } else {
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
