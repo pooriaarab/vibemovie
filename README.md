@@ -4,6 +4,58 @@
 
 Transforms your AI-assisted coding activity into a cinematic, narrated video — complete with chapters, a storyline, dramatic music, and visual effects. Not a screen recording. A movie.
 
+## Install
+
+```bash
+npm i -g @pooriaarab/vibemovie
+# or run it directly
+npx @pooriaarab/vibemovie --help
+```
+
+## Quick start
+
+```bash
+# render a session recap from a JSON events file (or stdin)
+vibemovie render session.json
+# → writes ./vibe-recap.html — open it in any browser
+
+vibemovie render session.json --ratio 9:16 --template speedrun --out recap.html
+cat session.json | vibemovie render
+
+# expose the render tool to your agent
+vibemovie mcp
+```
+
+The default engine is **Hyperframes**: the recap is a self-contained animated
+HTML page rendered fully **offline** — **zero API keys**, no network, nothing
+leaves your machine. (Gen-video providers like Sora/Wavespeed slot into the
+cascade above it later; v0 ships the guaranteed floor.)
+
+Input is a JSON array of events (or `{ "events": [...] }`):
+
+```json
+[
+  { "kind": "task-done", "ts": 1769500000000, "agent": "claude-code", "cwd": "/repo/demo",
+    "payload": { "label": "Refactor auth middleware", "durationMin": 18 } },
+  { "kind": "tests-pass", "ts": 1769503600000, "payload": { "passed": 42 } },
+  { "kind": "pr-merged", "ts": 1769505100000, "payload": { "pr": 42, "branch": "main" } }
+]
+```
+
+Library usage:
+
+```ts
+import { renderMovie } from '@pooriaarab/vibemovie';
+
+const { html, path } = await renderMovie(events, {
+  ratio: '16:9',            // '16:9' | '9:16' | '1:1'
+  template: 'documentary',  // 'documentary' | 'speedrun' | 'meme'
+  out: 'recap.html',        // optional — omit to just get the HTML string
+});
+```
+
+`buildScenes(events)` (events → scene list) and `renderHyperframes(scenes)` (scene list → HTML) are pure and exported for custom pipelines.
+
 ## Why Build This
 
 - VibeReplay captures sessions — VibeMovie turns them into stories
@@ -46,8 +98,9 @@ narrated by your avatar instead of an abstract summary.
 
 ## Distribution
 
-- **CLI** — `vibemovie render --session <id>` or `vibemovie render --repo .`
-- **npm package** — `npm install -g vibemovie`
+- **CLI** — `vibemovie render session.json` (today) · `--session <id>` / `--repo .` (planned)
+- **npm package** — `npm install -g @pooriaarab/vibemovie`
+- **MCP server** — `vibemovie mcp` exposes a `render` tool your agent can call
 - **Claude Code skill** — `/vibemovie` to render your last session
 - **skills.sh** — Listed on skills.sh marketplace
 - **Web app** — Upload a git repo, get a movie of its entire history
