@@ -12,6 +12,7 @@ describe('parseArgs', () => {
     expect(args.command).toBe('render');
     expect(args.ratio).toBe('16:9');
     expect(args.template).toBe('documentary');
+    expect(args.engine).toBe('hyperframes');
     expect(args.out).toBe('./vibe-recap.html');
     expect(args.file).toBeUndefined();
   });
@@ -78,6 +79,23 @@ describe('parseArgs', () => {
   it('rejects invalid enum values with a helpful message', () => {
     expect(() => parseArgs(['render', '--ratio', '4:3'])).toThrow(/invalid --ratio "4:3"/);
     expect(() => parseArgs(['render', '--template', 'noir'])).toThrow(/invalid --template "noir"/);
+    expect(() => parseArgs(['render', '--engine', 'imax'])).toThrow(/invalid --engine "imax"/);
+  });
+
+  it('--engine cinematic switches the default output to mp4', () => {
+    const args = parseArgs(['render', '--engine', 'cinematic']);
+    expect(args.engine).toBe('cinematic');
+    expect(args.out).toBe('./vibe-recap.mp4');
+  });
+
+  it('--engine accepts the = form and keeps an explicit --out', () => {
+    const a = parseArgs(['render', '--engine=cinematic', '--out', 'film.mov']);
+    expect(a.engine).toBe('cinematic');
+    expect(a.out).toBe('film.mov');
+    const b = parseArgs(['render', '--out', 'film.mov', '--engine', 'cinematic']);
+    expect(b.out).toBe('film.mov');
+    const c = parseArgs(['render', '--engine', 'hyperframes']);
+    expect(c.out).toBe('./vibe-recap.html');
   });
 
   it('rejects missing flag values', () => {
