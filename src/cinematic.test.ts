@@ -186,6 +186,51 @@ describe('renderMovie engine selection', () => {
   });
 });
 
+describe('renderMovie notifications', () => {
+  it('emits render-done exactly once on a successful render', async () => {
+    const events: VibeEvent[] = [];
+    const dir = mkdtempSync(join(tmpdir(), 'vibemovie-notify-'));
+    const out = join(dir, 'recap.html');
+    const result = await renderMovie(session, { out, notify: (e) => events.push(e) });
+    expect(result.path).toBe(out);
+
+    expect(events).toHaveLength(1);
+    const e = events[0];
+    expect(e?.kind).toBe('render-done');
+    expect(e?.payload?.['outputPath']).toBe(out);
+    expect(String(e?.payload?.['summary'])).toContain('hyperframes');
+  });
+
+  it('emits on success even without an out path', async () => {
+    const events: VibeEvent[] = [];
+    const result = await renderMovie(session, { notify: (e) => events.push(e) });
+    expect(result.engine).toBe('hyperframes');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload?.['outputPath']).toBeNull();
+  });
+
+  it('does not emit when the render fails', async () => {
+    const events: VibeEvent[] = [];
+    await expect(
+      renderMovie(session, {
+        out: join(tmpdir(), 'vibemovie-no-such-dir-xyz', 'recap.html'),
+        notify: (e) => events.push(e),
+      }),
+    ).rejects.toThrow();
+    expect(events).toHaveLength(0);
+  });
+
+  it('a throwing sink never breaks a successful render', async () => {
+    const result = await renderMovie(session, {
+      notify: () => {
+        throw new Error('notify channel exploded');
+      },
+    });
+    expect(result.engine).toBe('hyperframes');
+    expect(result.html).toContain('<!DOCTYPE html>');
+  });
+});
+
 describe('renderCinematic', () => {
   it('refuses to run without a key — no egress without BYO key', async () => {
     vi.stubEnv('WAVESPEED_API_KEY', '');

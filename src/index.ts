@@ -17,7 +17,7 @@
  * ```
  */
 
-import { createCascade, createConsentLedger } from '@pooriaarab/vibe-core';
+import { createCascade, createConsentLedger, makeEvent, notify as vibeCoreNotify } from '@pooriaarab/vibe-core';
 import type { LocalRunner } from '@pooriaarab/vibe-core';
 import { writeFile } from 'node:fs/promises';
 
@@ -50,6 +50,9 @@ export type {
 } from './scenes.js';
 export type { VibeEvent } from '@pooriaarab/vibe-core';
 
+/** Sink for milestone notifications. Injectable so tests can capture events. */
+export type NotifySink = (event: VibeEvent) => void;
+
 export interface RenderMovieOptions extends BuildOptions, RenderOptions {
   /** When set, the output is also written to this path (HTML or mp4, per engine). */
   out?: string;
@@ -59,6 +62,8 @@ export interface RenderMovieOptions extends BuildOptions, RenderOptions {
   apiKey?: string;
   /** Status/fallback messages. Default: stderr. */
   log?: (msg: string) => void;
+  /** Override the notification sink (tests). Defaults to vibe-core's `notify`. */
+  notify?: NotifySink;
 }
 
 export interface RenderMovieResult {
@@ -105,6 +110,11 @@ function createHyperframesRunner(): LocalRunner {
  * is always a file (default `./vibe-recap.mp4` when `out` is omitted); if the
  * cinematic engine falls back, a video-looking `out` extension is rewritten to
  * `.html` so the artifact matches its contents.
+ *
+ * A successful render (either engine, including a cinematic → hyperframes
+ * fallback) fires ONE best-effort `render-done` vibenotify event via the
+ * injectable sink (`opts.notify`, default vibe-core's `notify`). A failed
+ * render fires nothing.
  */
 export async function renderMovie(
   events: readonly (VibeEvent | RawEvent)[],
@@ -112,6 +122,7 @@ export async function renderMovie(
 ): Promise<RenderMovieResult> {
   const scenes = buildScenes(events, opts);
   const log = opts.log ?? ((msg: string) => process.stderr.write(`${msg}\n`));
+  const sink: NotifySink = opts.notify ?? vibeCoreNotify;
   let out = opts.out;
 
   if ((opts.engine ?? 'hyperframes') === 'cinematic') {
@@ -119,8 +130,10 @@ export async function renderMovie(
       const cinOut = out ?? './vibe-recap.mp4';
       const cinOpts: CinematicOptions = { out: cinOut, log };
       if (opts.apiKey !== undefined) cinOpts.apiKey = opts.apiKey;
-      const result = await renderCinematic(scenes, cinOpts);
-      return { engine: 'cinematic', path: result.path };
+      const cin = await renderCinematic(scenes, cinOpts);
+      const result: RenderMovieResult = { engine: 'cinematic', path: cin.path };
+      notifyRenderDone(sink, result);
+      return result;
     }
     const why = !cinematicAvailable()
       ? 'WAVESPEED_API_KEY is not set'
@@ -155,7 +168,29 @@ export async function renderMovie(
 
   if (out !== undefined) {
     await writeFile(out, html, 'utf8');
-    return { engine: 'hyperframes', html, path: out };
+    const result: RenderMovieResult = { engine: 'hyperframes', html, path: out };
+    notifyRenderDone(sink, result);
+    return result;
   }
-  return { engine: 'hyperframes', html };
+  const result: RenderMovieResult = { engine: 'hyperframes', html };
+  notifyRenderDone(sink, result);
+  return result;
+}
+
+/**
+ * Fire the `render-done` milestone. Best-effort: a throwing sink (e.g. an
+ * unwritable notify channel) must never turn a successful render into a
+ * failure, so errors are swallowed here.
+ */
+function notifyRenderDone(sink: NotifySink, result: RenderMovieResult): void {
+  try {
+    sink(
+      makeEvent('render-done', 'vibemovie', process.cwd(), {
+        summary: `rendered ${result.engine} recap${result.path !== undefined ? ` → ${result.path}` : ''}`,
+        outputPath: result.path ?? null,
+      }),
+    );
+  } catch {
+    /* best effort */
+  }
 }
