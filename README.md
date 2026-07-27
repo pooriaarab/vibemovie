@@ -7,9 +7,9 @@ Transforms your AI-assisted coding activity into a cinematic, narrated video —
 ## Install
 
 ```bash
-npm i -g vibemovie-cli
+npm i -g vibemovie
 # or run it directly
-npx vibemovie-cli --help
+npx vibemovie --help
 ```
 
 ## Quick start
@@ -22,42 +22,14 @@ vibemovie render session.json
 vibemovie render session.json --ratio 9:16 --template speedrun --out recap.html
 cat session.json | vibemovie render
 
-# opt into the gen-video engine (BYO key — see "Cinematic engine" below)
-vibemovie render session.json --engine cinematic
-# → writes ./vibe-recap.mp4
-
 # expose the render tool to your agent
 vibemovie mcp
 ```
 
 The default engine is **Hyperframes**: the recap is a self-contained animated
 HTML page rendered fully **offline** — **zero API keys**, no network, nothing
-leaves your machine. The **cinematic** engine is opt-in and BYO-key (below);
-local-first stays the default.
-
-## Cinematic engine (BYO key)
-
-`--engine cinematic` turns the session into a real gen-video mp4: a cinematic
-character short of your session, narrated beat-by-beat. The pipeline (per the
-validated `launch-video-generation` recipe):
-
-1. one storyboard beat per scene — keyframe prompt + motion prompt + VO line
-2. `seedream-v4` wide hero + crisp face headshot (identity anchors)
-3. `flux-kontext-max` keyframes, LOCK'd to the hero for character/set consistency
-4. `kling-v2.5-turbo-pro` chained clips — each clip's first frame is the previous
-   clip's last frame, so cuts are seamless
-5. `video-face-swap` identity lock over the whole cut, then one unified color grade
-6. ElevenLabs `eleven-v3` voiceover, one line per beat, mixed over a room-tone bed
-
-Requirements:
-
-- **`WAVESPEED_API_KEY`** in the environment (ElevenLabs runs through wavespeed
-  too, so the one key covers everything). Nothing is sent out without it.
-- **`ffmpeg`** on PATH (normalize / concat / grade / mux) and node ≥ 18.
-
-If either is missing, vibemovie prints why and **falls back to Hyperframes** —
-never a hard failure, never egress without a key. Cost is pay-as-you-go on your
-own wavespeed account (~$2–3 per ~30s video at the time of writing).
+leaves your machine. (Gen-video providers like Sora/Wavespeed slot into the
+cascade above it later; v0 ships the guaranteed floor.)
 
 Input is a JSON array of events (or `{ "events": [...] }`):
 
@@ -73,20 +45,16 @@ Input is a JSON array of events (or `{ "events": [...] }`):
 Library usage:
 
 ```ts
-import { renderMovie } from 'vibemovie-cli';
+import { renderMovie } from 'vibemovie';
 
 const { html, path } = await renderMovie(events, {
   ratio: '16:9',            // '16:9' | '9:16' | '1:1'
   template: 'documentary',  // 'documentary' | 'speedrun' | 'meme'
   out: 'recap.html',        // optional — omit to just get the HTML string
 });
-
-// gen-video tier (needs WAVESPEED_API_KEY + ffmpeg; falls back to HTML otherwise)
-const video = await renderMovie(events, { engine: 'cinematic', out: 'recap.mp4' });
-// video.engine tells you which engine actually ran
 ```
 
-`buildScenes(events)` (events → scene list) and `renderHyperframes(scenes)` (scene list → HTML) are pure and exported for custom pipelines; `deriveBeats(scenes)` exposes the cinematic storyboard (keyframe/motion/VO prompts) without spending anything.
+`buildScenes(events)` (events → scene list) and `renderHyperframes(scenes)` (scene list → HTML) are pure and exported for custom pipelines.
 
 ## Why Build This
 
@@ -115,8 +83,7 @@ Video generation follows the shared `@vibe/core` cascade so it always works:
 
 1. **Your existing model** — if your agent's provider does video (e.g. Sora via your
    OpenAI), use it.
-2. **A video-gen key you bring** — shipped: the **cinematic** engine on wavespeed
-   (`--engine cinematic`, `WAVESPEED_API_KEY`). Replicate or similar can slot in here.
+2. **A video-gen key you bring** — Wavespeed, Replicate, or similar.
 3. **Hyperframes fallback** — pure HTML/CSS/JS animated "video" (a rendered,
    animated web page). No generative-video model, no key, no network — always
    available. (The prototype below _is_ a working Hyperframes recap.)
@@ -132,7 +99,7 @@ narrated by your avatar instead of an abstract summary.
 ## Distribution
 
 - **CLI** — `vibemovie render session.json` (today) · `--session <id>` / `--repo .` (planned)
-- **npm package** — `npm install -g vibemovie-cli`
+- **npm package** — `npm install -g vibemovie`
 - **MCP server** — `vibemovie mcp` exposes a `render` tool your agent can call
 - **Claude Code skill** — `/vibemovie` to render your last session
 - **skills.sh** — Listed on skills.sh marketplace
