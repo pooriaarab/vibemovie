@@ -33,6 +33,11 @@ export { buildScenes, renderHyperframes };
 export { cinematicAvailable, deriveBeats, deriveReferencePrompts, renderCinematic, ENGINES } from './cinematic.js';
 export type { BuildOptions, RawEvent, RenderOptions };
 export type { Beat, CinematicDeps, CinematicOptions, CinematicResult, Engine } from './cinematic.js';
+
+// Shot-recipe library (distilled from video-shotcraft) — a prompt-oriented
+// palette the cinematic engine can draw shot lists from. See ./recipes/.
+export { shotRecipes, SHOT_ROLES, ENERGY_LEVELS, pickRecipes, recipesForArc } from './recipes/index.js';
+export type { ShotRecipe, Role, Energy } from './recipes/index.js';
 export type {
   Ratio,
   Template,
