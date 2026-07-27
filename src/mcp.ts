@@ -1,9 +1,11 @@
 /**
  * vibemovie MCP server (stdio) — lets an agent render a session recap.
  *
- * Exposes one tool, `render`: { events, ratio?, template?, out? } → the recap
- * HTML (or the output path when `out` is given). Rendering is the local
- * Hyperframes tier, so the tool works offline with zero keys.
+ * Exposes one tool, `render`: { events, ratio?, template?, engine?, out? } →
+ * the recap HTML (or the output path when `out` is given). The default engine
+ * is the local Hyperframes tier, so the tool works offline with zero keys;
+ * `engine: 'cinematic'` opts into the BYO-key wavespeed gen-video pipeline
+ * (falls back to Hyperframes when no key/ffmpeg is available).
  *
  * Uses the SDK's low-level Server with a plain JSON Schema for input — no
  * schema-library dependency beyond the SDK itself.
@@ -16,14 +18,19 @@ import { pathToFileURL } from 'node:url';
 
 import { renderMovie } from './index.js';
 import type { RawEvent, Ratio, Template } from './index.js';
+import { ENGINES } from './cinematic.js';
+import type { Engine } from './cinematic.js';
 import { RATIOS, TEMPLATES } from './scenes.js';
 import { VERSION } from './version.js';
 
 const RENDER_TOOL = {
   name: 'render',
   description:
-    'Render an agent coding session as a recap "movie" — a self-contained animated HTML page ' +
-    '(Hyperframes tier: offline, zero keys, no data out). Returns the HTML, or the output path when `out` is set.',
+    'Render an agent coding session as a recap "movie". Default engine is hyperframes — a ' +
+    'self-contained animated HTML page (offline, zero keys, no data out). Set engine to ' +
+    '"cinematic" for a real gen-video mp4 via wavespeed.ai (BYO key: needs WAVESPEED_API_KEY ' +
+    'in the server env and ffmpeg on PATH; falls back to hyperframes when unavailable). ' +
+    'Returns the HTML, or the output path when `out` is set.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -37,8 +44,9 @@ const RENDER_TOOL = {
       },
       ratio: { type: 'string', enum: [...RATIOS], description: 'Player aspect ratio (default 16:9).' },
       template: { type: 'string', enum: [...TEMPLATES], description: 'Caption tone + pacing (default documentary).' },
+      engine: { type: 'string', enum: [...ENGINES], description: 'Render engine (default hyperframes).' },
       title: { type: 'string', description: 'Session name on the title card.' },
-      out: { type: 'string', description: 'Optional path to write the HTML to.' },
+      out: { type: 'string', description: 'Optional path to write the HTML (or mp4 for cinematic) to.' },
     },
     required: ['events'],
   },
@@ -67,6 +75,7 @@ export async function startMcpServer(): Promise<void> {
     }
     const ratio = enumArg(args['ratio'], 'ratio', RATIOS) as Ratio | undefined;
     const template = enumArg(args['template'], 'template', TEMPLATES) as Template | undefined;
+    const engine = enumArg(args['engine'], 'engine', ENGINES) as Engine | undefined;
     const title = args['title'];
     const out = args['out'];
     if (title !== undefined && typeof title !== 'string') throw new Error('render: "title" must be a string');
@@ -75,14 +84,19 @@ export async function startMcpServer(): Promise<void> {
     const result = await renderMovie(args['events'] as RawEvent[], {
       ...(ratio !== undefined ? { ratio } : {}),
       ...(template !== undefined ? { template } : {}),
+      ...(engine !== undefined ? { engine } : {}),
       ...(title !== undefined ? { title } : {}),
       ...(out !== undefined ? { out } : {}),
+      // stdio transport: anything user-facing must stay off stdout
+      log: (msg) => process.stderr.write(`${msg}\n`),
     });
 
+    const tier =
+      result.engine === 'cinematic'
+        ? 'cinematic · wavespeed gen-video + eleven-v3 narration · BYO key'
+        : 'hyperframes · offline · zero keys';
     const text =
-      result.path !== undefined
-        ? `vibemovie recap written to ${result.path} (hyperframes · offline · zero keys)`
-        : result.html;
+      result.path !== undefined ? `vibemovie recap written to ${result.path} (${tier})` : (result.html ?? '');
     return { content: [{ type: 'text', text }] };
   });
 
