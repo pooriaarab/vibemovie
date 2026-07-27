@@ -3,12 +3,14 @@
  * vibemovie CLI — render a session recap from JSON events, or serve MCP.
  *
  *   vibemovie render [file.json] [--ratio 16:9|9:16|1:1] [--template documentary|speedrun|meme]
- *                    [--out recap.html] [--title "my session"]
+ *                    [--engine hyperframes|cinematic] [--out recap.html] [--title "my session"]
  *   vibemovie mcp        start the MCP server on stdio
  *   vibemovie --version  ·  vibemovie --help
  *
- * Events are read from the file argument, or stdin when piped. The recap is
- * rendered by the local Hyperframes tier — offline, zero keys.
+ * Events are read from the file argument, or stdin when piped. The default
+ * engine is the local Hyperframes tier — offline, zero keys. The cinematic
+ * engine is opt-in and BYO-key: it needs WAVESPEED_API_KEY and ffmpeg, and
+ * falls back to Hyperframes when either is missing.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -16,6 +18,8 @@ import { pathToFileURL } from 'node:url';
 
 import { renderMovie } from './index.js';
 import type { RawEvent, Ratio, Template } from './index.js';
+import { ENGINES } from './cinematic.js';
+import type { Engine } from './cinematic.js';
 import { RATIOS, TEMPLATES } from './scenes.js';
 import { VERSION } from './version.js';
 
@@ -29,6 +33,7 @@ export interface CliArgs {
   file?: string;
   ratio: Ratio;
   template: Template;
+  engine: Engine;
   out: string;
   title?: string;
 }
@@ -44,13 +49,19 @@ Usage:
 Options:
   --ratio 16:9|9:16|1:1                    player aspect ratio (default 16:9)
   --template documentary|speedrun|meme     caption tone + pacing (default documentary)
-  --out <path>                             output HTML file (default ./vibe-recap.html)
+  --engine hyperframes|cinematic           render engine (default hyperframes)
+  --out <path>                             output file (default ./vibe-recap.html,
+                                           or ./vibe-recap.mp4 for cinematic)
   --title <name>                           session name on the title card
 
 Input: a JSON array of events (or { "events": [...] }). Each event:
   { "kind": "task-done", "ts": 1720000000000, "payload": { "label": "..." } }
 
-The recap is rendered on-device by the Hyperframes tier: offline, zero keys.
+Engines:
+  hyperframes  renders on-device: offline, zero keys, no data out.
+  cinematic    real gen-video mp4 via wavespeed.ai (BYO key) + ElevenLabs VO.
+               Needs WAVESPEED_API_KEY in the env and ffmpeg on PATH; falls
+               back to hyperframes when either is missing.
 `;
 
 function takeValue(argv: readonly string[], i: number, flag: string, inline: string | undefined): { value: string; next: number } {
@@ -69,11 +80,12 @@ function takeValue(argv: readonly string[], i: number, flag: string, inline: str
  */
 export function parseArgs(argv: readonly string[]): CliArgs {
   if (argv.length === 0) {
-    return { command: 'help', ratio: '16:9', template: 'documentary', out: './vibe-recap.html' };
+    return { command: 'help', ratio: '16:9', template: 'documentary', engine: 'hyperframes', out: './vibe-recap.html' };
   }
-  const args: CliArgs = { command: 'render', ratio: '16:9', template: 'documentary', out: './vibe-recap.html' };
+  const args: CliArgs = { command: 'render', ratio: '16:9', template: 'documentary', engine: 'hyperframes', out: './vibe-recap.html' };
   let sawCommand = false;
   let sawFile = false;
+  let sawOut = false;
 
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i] as string;
@@ -104,7 +116,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     if (tok.startsWith('--')) {
       const eq = tok.indexOf('=');
       const flag = eq === -1 ? tok : tok.slice(0, eq);
-      if (flag !== '--ratio' && flag !== '--template' && flag !== '--out' && flag !== '--title') {
+      if (flag !== '--ratio' && flag !== '--template' && flag !== '--engine' && flag !== '--out' && flag !== '--title') {
         throw new CliError(`unknown flag: ${flag}`);
       }
       const inline = eq === -1 ? undefined : tok.slice(eq + 1);
@@ -120,8 +132,14 @@ export function parseArgs(argv: readonly string[]): CliArgs {
           throw new CliError(`invalid --template "${value}" (expected ${TEMPLATES.join('|')})`);
         }
         args.template = value as Template;
+      } else if (flag === '--engine') {
+        if (!(ENGINES as readonly string[]).includes(value)) {
+          throw new CliError(`invalid --engine "${value}" (expected ${ENGINES.join('|')})`);
+        }
+        args.engine = value as Engine;
       } else if (flag === '--out') {
         args.out = value;
+        sawOut = true;
       } else if (flag === '--title') {
         args.title = value;
       } else {
@@ -145,6 +163,9 @@ export function parseArgs(argv: readonly string[]): CliArgs {
 
   if (args.command === 'mcp' && (args.file !== undefined || sawFile)) {
     throw new CliError('mcp takes no input file');
+  }
+  if (args.engine === 'cinematic' && !sawOut) {
+    args.out = './vibe-recap.mp4';
   }
   return args;
 }
@@ -211,11 +232,17 @@ export async function main(argv: readonly string[]): Promise<void> {
   const result = await renderMovie(events, {
     ratio: args.ratio,
     template: args.template,
+    engine: args.engine,
     out: args.out,
+    log: (msg) => process.stderr.write(`${msg}\n`),
     ...(args.title !== undefined ? { title: args.title } : {}),
   });
   process.stdout.write(`✓ recap rendered → ${result.path as string}\n`);
-  process.stdout.write('  hyperframes · offline · zero keys\n');
+  process.stdout.write(
+    result.engine === 'cinematic'
+      ? '  cinematic · wavespeed gen-video + eleven-v3 narration · BYO key\n'
+      : '  hyperframes · offline · zero keys\n',
+  );
 }
 
 const invokedAsScript =
