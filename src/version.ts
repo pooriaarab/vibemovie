@@ -3,4 +3,4 @@
  * Lives in its own module so the CLI entry's is-main guard is never
  * code-split into a shared chunk.
  */
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.3';
