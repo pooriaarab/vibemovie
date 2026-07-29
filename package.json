@@ -1,7 +1,7 @@
 {
   "name": "vibemovie",
-  "version": "0.2.2",
-  "description": "Your agent coding session as a short recap video — Hyperframes (HTML/CSS/JS) with zero gen-video keys, or your own video model. For Claude Code, Codex, Gemini, and other agentic CLIs. Local-first.",
+  "version": "0.2.3",
+  "description": "Your agent coding session as a short recap video \u2014 Hyperframes (HTML/CSS/JS) with zero gen-video keys, or your own video model. For Claude Code, Codex, Gemini, and other agentic CLIs. Local-first.",
   "type": "module",
   "license": "MIT",
   "author": "Pooria Arab",
@@ -60,5 +60,6 @@
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "mcpName": "io.github.pooriaarab/vibemovie"
 }
