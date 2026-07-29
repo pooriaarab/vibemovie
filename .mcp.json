@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "vibemovie": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "vibemovie",
+        "mcp"
+      ]
+    }
+  }
+}
