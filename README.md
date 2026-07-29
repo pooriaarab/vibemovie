@@ -4,6 +4,12 @@
 
 Transforms your AI-assisted coding activity into a cinematic, narrated video — complete with chapters, a storyline, dramatic music, and visual effects. Not a screen recording. A movie.
 
+## Demo
+
+[▶ Watch the launch video](branding/launch-video.mp4) — what if claude made a movie about your PR?
+
+https://github.com/pooriaarab/vibemovie/raw/main/branding/launch-video.mp4
+
 ## Install
 
 ```bash
