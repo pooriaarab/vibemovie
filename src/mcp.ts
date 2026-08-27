@@ -1,14 +1,5 @@
 /**
  * vibemovie MCP server (stdio) — lets an agent render a session recap.
- *
- * Exposes one tool, `render`: { events, ratio?, template?, engine?, out? } →
- * the recap HTML (or the output path when `out` is given). The default engine
- * is the local Hyperframes tier, so the tool works offline with zero keys;
- * `engine: 'cinematic'` opts into the BYO-key wavespeed gen-video pipeline
- * (falls back to Hyperframes when no key/ffmpeg is available).
- *
- * Uses the SDK's low-level Server with a plain JSON Schema for input — no
- * schema-library dependency beyond the SDK itself.
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -60,6 +51,52 @@ function enumArg(value: unknown, name: string, allowed: readonly string[]): stri
   return value;
 }
 
+function validateStringArg(value: unknown, name: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`render: "${name}" must be a string`);
+  return value;
+}
+
+interface ParsedRenderArgs {
+  events: RawEvent[];
+  ratio?: Ratio;
+  template?: Template;
+  engine?: Engine;
+  title?: string;
+  out?: string;
+}
+
+function parseRenderArgs(raw: Record<string, unknown>): ParsedRenderArgs {
+  if (!Array.isArray(raw['events'])) {
+    throw new Error('render: "events" must be an array of event objects');
+  }
+  const ratio = enumArg(raw['ratio'], 'ratio', RATIOS) as Ratio | undefined;
+  const template = enumArg(raw['template'], 'template', TEMPLATES) as Template | undefined;
+  const engine = enumArg(raw['engine'], 'engine', ENGINES) as Engine | undefined;
+  const title = validateStringArg(raw['title'], 'title');
+  const out = validateStringArg(raw['out'], 'out');
+  return { events: raw['events'] as RawEvent[], ...(ratio !== undefined ? { ratio } : {}), ...(template !== undefined ? { template } : {}), ...(engine !== undefined ? { engine } : {}), ...(title !== undefined ? { title } : {}), ...(out !== undefined ? { out } : {}) };
+}
+
+async function handleRender(raw: Record<string, unknown>): Promise<{ content: { type: 'text'; text: string }[] }> {
+  const parsed = parseRenderArgs(raw);
+  const result = await renderMovie(parsed.events, {
+    ...(parsed.ratio !== undefined ? { ratio: parsed.ratio } : {}),
+    ...(parsed.template !== undefined ? { template: parsed.template } : {}),
+    ...(parsed.engine !== undefined ? { engine: parsed.engine } : {}),
+    ...(parsed.title !== undefined ? { title: parsed.title } : {}),
+    ...(parsed.out !== undefined ? { out: parsed.out } : {}),
+    log: (msg) => process.stderr.write(`${msg}\n`),
+  });
+  const tier =
+    result.engine === 'cinematic'
+      ? 'cinematic · wavespeed gen-video + eleven-v3 narration · BYO key'
+      : 'hyperframes · offline · zero keys';
+  const text =
+    result.path !== undefined ? `vibemovie recap written to ${result.path} (${tier})` : (result.html ?? '');
+  return { content: [{ type: 'text', text }] };
+}
+
 export async function startMcpServer(): Promise<void> {
   const server = new Server({ name: 'vibemovie', version: VERSION }, { capabilities: { tools: {} } });
 
@@ -70,34 +107,7 @@ export async function startMcpServer(): Promise<void> {
       throw new Error(`unknown tool: ${req.params.name}`);
     }
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
-    if (!Array.isArray(args['events'])) {
-      throw new Error('render: "events" must be an array of event objects');
-    }
-    const ratio = enumArg(args['ratio'], 'ratio', RATIOS) as Ratio | undefined;
-    const template = enumArg(args['template'], 'template', TEMPLATES) as Template | undefined;
-    const engine = enumArg(args['engine'], 'engine', ENGINES) as Engine | undefined;
-    const title = args['title'];
-    const out = args['out'];
-    if (title !== undefined && typeof title !== 'string') throw new Error('render: "title" must be a string');
-    if (out !== undefined && typeof out !== 'string') throw new Error('render: "out" must be a string');
-
-    const result = await renderMovie(args['events'] as RawEvent[], {
-      ...(ratio !== undefined ? { ratio } : {}),
-      ...(template !== undefined ? { template } : {}),
-      ...(engine !== undefined ? { engine } : {}),
-      ...(title !== undefined ? { title } : {}),
-      ...(out !== undefined ? { out } : {}),
-      // stdio transport: anything user-facing must stay off stdout
-      log: (msg) => process.stderr.write(`${msg}\n`),
-    });
-
-    const tier =
-      result.engine === 'cinematic'
-        ? 'cinematic · wavespeed gen-video + eleven-v3 narration · BYO key'
-        : 'hyperframes · offline · zero keys';
-    const text =
-      result.path !== undefined ? `vibemovie recap written to ${result.path} (${tier})` : (result.html ?? '');
-    return { content: [{ type: 'text', text }] };
+    return handleRender(args);
   });
 
   await server.connect(new StdioServerTransport());
