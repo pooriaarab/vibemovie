@@ -1,20 +1,9 @@
 #!/usr/bin/env node
 /**
  * vibemovie CLI — render a session recap from JSON events, or serve MCP.
- *
- *   vibemovie render [file.json] [--ratio 16:9|9:16|1:1] [--template documentary|speedrun|meme]
- *                    [--engine hyperframes|cinematic] [--out recap.html] [--title "my session"]
- *   vibemovie mcp        start the MCP server on stdio
- *   vibemovie --version  ·  vibemovie --help
- *
- * Events are read from the file argument, or stdin when piped. The default
- * engine is the local Hyperframes tier — offline, zero keys. The cinematic
- * engine is opt-in and BYO-key: it needs WAVESPEED_API_KEY and ffmpeg, and
- * falls back to Hyperframes when either is missing.
  */
 
 import { readFile } from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
 
 import { renderMovie } from './index.js';
 import type { RawEvent, Ratio, Template } from './index.js';
@@ -29,7 +18,6 @@ export class CliError extends Error {}
 
 export interface CliArgs {
   command: 'render' | 'mcp' | 'help' | 'version';
-  /** Positional JSON file for `render` (absent → read stdin). */
   file?: string;
   ratio: Ratio;
   template: Template;
@@ -74,99 +62,120 @@ function takeValue(argv: readonly string[], i: number, flag: string, inline: str
   return { value: v, next: i + 1 };
 }
 
-/**
- * Parse argv (already sliced past node + script). Throws CliError on unknown
- * flags, missing values, or invalid enum values.
- */
+function applyRatio(value: string, args: CliArgs): void {
+  if (!(RATIOS as readonly string[]).includes(value)) {
+    throw new CliError(`invalid --ratio "${value}" (expected ${RATIOS.join('|')})`);
+  }
+  args.ratio = value as Ratio;
+}
+
+function applyTemplate(value: string, args: CliArgs): void {
+  if (!(TEMPLATES as readonly string[]).includes(value)) {
+    throw new CliError(`invalid --template "${value}" (expected ${TEMPLATES.join('|')})`);
+  }
+  args.template = value as Template;
+}
+
+function applyEngine(value: string, args: CliArgs): void {
+  if (!(ENGINES as readonly string[]).includes(value)) {
+    throw new CliError(`invalid --engine "${value}" (expected ${ENGINES.join('|')})`);
+  }
+  args.engine = value as Engine;
+}
+
+function applyFlag(flag: string, value: string, args: CliArgs, state: { sawOut: boolean }): void {
+  if (flag === '--ratio') applyRatio(value, args);
+  else if (flag === '--template') applyTemplate(value, args);
+  else if (flag === '--engine') applyEngine(value, args);
+  else if (flag === '--out') {
+    args.out = value;
+    state.sawOut = true;
+  } else if (flag === '--title') {
+    args.title = value;
+  }
+}
+
+function handleLongFlag(
+  tok: string,
+  argv: readonly string[],
+  i: number,
+  ctx: { args: CliArgs; state: { sawOut: boolean } },
+): number | null {
+  if (!tok.startsWith('--')) return null;
+  const eq = tok.indexOf('=');
+  const flag = eq === -1 ? tok : tok.slice(0, eq);
+  const allowed = new Set(['--ratio', '--template', '--engine', '--out', '--title']);
+  if (!allowed.has(flag)) throw new CliError(`unknown flag: ${flag}`);
+  const inline = eq === -1 ? undefined : tok.slice(eq + 1);
+  const { value, next } = takeValue(argv, i, flag, inline);
+  applyFlag(flag, value, ctx.args, ctx.state);
+  return next;
+}
+
+function handleHelpVersion(tok: string, args: CliArgs): boolean {
+  if (tok === '--help' || tok === '-h') {
+    args.command = 'help';
+    return true;
+  }
+  if (tok === '--version' || tok === '-V' || tok === '-v') {
+    args.command = 'version';
+    return true;
+  }
+  return false;
+}
+
+function handleCommand(tok: string, args: CliArgs, state: { sawCommand: boolean }): boolean {
+  if (state.sawCommand || tok.startsWith('-')) return false;
+  if (tok === 'render' || tok === 'mcp') {
+    args.command = tok;
+    state.sawCommand = true;
+    return true;
+  }
+  if (tok === 'help') {
+    args.command = 'help';
+    state.sawCommand = true;
+    return true;
+  }
+  throw new CliError(`unknown command: ${tok}`);
+}
+
+function handlePositional(tok: string, args: CliArgs, state: { sawFile: boolean }): void {
+  if (tok.startsWith('-') && tok !== '-') throw new CliError(`unknown flag: ${tok}`);
+  if (!state.sawFile) {
+    args.file = tok;
+    state.sawFile = true;
+  } else {
+    throw new CliError(`unexpected argument: ${tok}`);
+  }
+}
+
+function finalizeArgs(args: CliArgs, state: { sawFile: boolean; sawOut: boolean }): void {
+  if (args.command === 'mcp' && (args.file !== undefined || state.sawFile)) {
+    throw new CliError('mcp takes no input file');
+  }
+  if (args.engine === 'cinematic' && !state.sawOut) {
+    args.out = './vibe-recap.mp4';
+  }
+}
+
 export function parseArgs(argv: readonly string[]): CliArgs {
   if (argv.length === 0) {
     return { command: 'help', ratio: '16:9', template: 'documentary', engine: 'hyperframes', out: './vibe-recap.html' };
   }
   const args: CliArgs = { command: 'render', ratio: '16:9', template: 'documentary', engine: 'hyperframes', out: './vibe-recap.html' };
-  let sawCommand = false;
-  let sawFile = false;
-  let sawOut = false;
-
+  const state = { sawCommand: false, sawFile: false, sawOut: false };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i] as string;
-
-    if (tok === '--help' || tok === '-h') {
-      args.command = 'help';
-      continue;
-    }
-    if (tok === '--version' || tok === '-V' || tok === '-v') {
-      args.command = 'version';
-      continue;
-    }
-
-    if (!sawCommand && !tok.startsWith('-')) {
-      if (tok === 'render' || tok === 'mcp') {
-        args.command = tok;
-        sawCommand = true;
-        continue;
-      }
-      if (tok === 'help') {
-        args.command = 'help';
-        sawCommand = true;
-        continue;
-      }
-      throw new CliError(`unknown command: ${tok}`);
-    }
-
-    if (tok.startsWith('--')) {
-      const eq = tok.indexOf('=');
-      const flag = eq === -1 ? tok : tok.slice(0, eq);
-      if (flag !== '--ratio' && flag !== '--template' && flag !== '--engine' && flag !== '--out' && flag !== '--title') {
-        throw new CliError(`unknown flag: ${flag}`);
-      }
-      const inline = eq === -1 ? undefined : tok.slice(eq + 1);
-      const { value, next } = takeValue(argv, i, flag, inline);
+    if (handleHelpVersion(tok, args)) continue;
+    if (handleCommand(tok, args, state)) continue;
+    const next = handleLongFlag(tok, argv, i, { args, state });
+    if (next !== null) {
       i = next;
-      if (flag === '--ratio') {
-        if (!(RATIOS as readonly string[]).includes(value)) {
-          throw new CliError(`invalid --ratio "${value}" (expected ${RATIOS.join('|')})`);
-        }
-        args.ratio = value as Ratio;
-      } else if (flag === '--template') {
-        if (!(TEMPLATES as readonly string[]).includes(value)) {
-          throw new CliError(`invalid --template "${value}" (expected ${TEMPLATES.join('|')})`);
-        }
-        args.template = value as Template;
-      } else if (flag === '--engine') {
-        if (!(ENGINES as readonly string[]).includes(value)) {
-          throw new CliError(`invalid --engine "${value}" (expected ${ENGINES.join('|')})`);
-        }
-        args.engine = value as Engine;
-      } else if (flag === '--out') {
-        args.out = value;
-        sawOut = true;
-      } else if (flag === '--title') {
-        args.title = value;
-      } else {
-        throw new CliError(`unknown flag: ${flag}`);
-      }
       continue;
     }
-
-    if (tok.startsWith('-') && tok !== '-') {
-      throw new CliError(`unknown flag: ${tok}`);
-    }
-
-    // positional: input file for render
-    if (!sawFile) {
-      args.file = tok;
-      sawFile = true;
-    } else {
-      throw new CliError(`unexpected argument: ${tok}`);
-    }
+    handlePositional(tok, args, state);
   }
-
-  if (args.command === 'mcp' && (args.file !== undefined || sawFile)) {
-    throw new CliError('mcp takes no input file');
-  }
-  if (args.engine === 'cinematic' && !sawOut) {
-    args.out = './vibe-recap.mp4';
-  }
+  finalizeArgs(args, state);
   return args;
 }
 
