@@ -1,6 +1,6 @@
 {
   "name": "vibemovie",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Coding-session recap generator with offline Hyperframes HTML, optional WaveSpeed AI video, ElevenLabs narration, FFmpeg assembly, and MCP.",
   "type": "module",
   "license": "MIT",
