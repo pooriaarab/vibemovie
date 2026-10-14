@@ -1,7 +1,7 @@
 {
   "name": "vibemovie",
   "version": "0.2.4",
-  "description": "Your agent coding session as a short recap video — Hyperframes (HTML/CSS/JS) with zero gen-video keys, or your own video model. For Claude Code, Codex, Gemini, and other agentic CLIs. Local-first.",
+  "description": "Coding-session recap generator with offline Hyperframes HTML, optional WaveSpeed AI video, ElevenLabs narration, FFmpeg assembly, and MCP.",
   "type": "module",
   "license": "MIT",
   "author": "Pooria Arab",
@@ -44,15 +44,19 @@
     "url": "https://github.com/pooriaarab/vibemovie/issues"
   },
   "keywords": [
-    "vibe-suite",
     "vibemovie",
+    "coding-recap",
+    "hyperframes",
+    "wavespeed",
+    "elevenlabs",
+    "ffmpeg",
+    "kling",
+    "seedream",
     "claude-code",
     "codex",
-    "agentic",
-    "cli",
+    "gemini-cli",
     "mcp",
-    "video",
-    "hyperframes",
+    "video-generation",
     "local-first"
   ],
   "publishConfig": {

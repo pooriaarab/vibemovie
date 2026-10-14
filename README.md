@@ -1,152 +1,221 @@
 # VibeMovie
 
-**Your vibe coding session, as a movie.**
+[![npm version](https://img.shields.io/npm/v/vibemovie)](https://www.npmjs.com/package/vibemovie) [![Downloads/month](https://img.shields.io/npm/dm/vibemovie)](https://www.npmjs.com/package/vibemovie) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/license/mit)
 
-Transforms your AI-assisted coding activity into a cinematic, narrated video — complete with chapters, a storyline, dramatic music, and visual effects. Not a screen recording. A movie.
+[Package](https://www.npmjs.com/package/vibemovie) · [Setup](#install) · [API example](#library-example) · [Compare](#compare)
 
-## Demo
-
-[▶ Watch the launch video](branding/launch-video.mp4) — what if claude made a movie about your PR?
-
-https://github.com/pooriaarab/vibemovie/raw/main/branding/launch-video.mp4
+VibeMovie is an open-source coding-session recap generator for developers and creators.
+It turns structured events into a self-contained animated HTML story through its local Hyperframes engine.
+An optional cinematic engine creates narrated MP4 output through WaveSpeed AI and FFmpeg. VibeMovie belongs to the Vibe Suite.
 
 ## Install
 
 ```bash
-npm i -g vibemovie
-# or run it directly
-npx vibemovie --help
+npm install -g vibemovie
 ```
 
-## Quick start
+Requires Node.js 18 or later. Includes TypeScript declarations and two direct runtime dependencies.
+The default Hyperframes engine needs no API key, browser automation, or FFmpeg installation.
+
+## Render your first recap
+
+Create an input file:
 
 ```bash
-# render a session recap from a JSON events file (or stdin)
-vibemovie render session.json
-# → writes ./vibe-recap.html — open it in any browser
-
-vibemovie render session.json --ratio 9:16 --template speedrun --out recap.html
-cat session.json | vibemovie render
-
-# expose the render tool to your agent
-vibemovie mcp
-```
-
-The default engine is **Hyperframes**: the recap is a self-contained animated
-HTML page rendered fully **offline** — **zero API keys**, no network, nothing
-leaves your machine. (Gen-video providers like Sora/Wavespeed slot into the
-cascade above it later; v0 ships the guaranteed floor.)
-
-Input is a JSON array of events (or `{ "events": [...] }`):
-
-```json
+cat > session.json <<'JSON'
 [
-  { "kind": "task-done", "ts": 1769500000000, "agent": "claude-code", "cwd": "/repo/demo",
-    "payload": { "label": "Refactor auth middleware", "durationMin": 18 } },
-  { "kind": "tests-pass", "ts": 1769503600000, "payload": { "passed": 42 } },
-  { "kind": "pr-merged", "ts": 1769505100000, "payload": { "pr": 42, "branch": "main" } }
+  {"kind":"task-done","ts":1769500000000,"agent":"claude-code","payload":{"label":"Refactor auth","durationMin":18}},
+  {"kind":"tests-pass","ts":1769503600000,"payload":{"passed":42}},
+  {"kind":"pr-merged","ts":1769505100000,"payload":{"pr":42,"branch":"main"}}
 ]
+JSON
+vibemovie render session.json --title "Auth recap" --out recap.html
 ```
 
-Library usage:
+The CLI prints `recap rendered` and the output path. Open `recap.html` in a browser to play the story and scrub its timeline.
+No environment variables or credentials are required. The CLI does not load `.env` files.
+The input describes events; VibeMovie does not inspect your coding-agent history automatically.
 
-```ts
-import { renderMovie } from 'vibemovie';
+## How it works
 
-const { html, path } = await renderMovie(events, {
-  ratio: '16:9',            // '16:9' | '9:16' | '1:1'
-  template: 'documentary',  // 'documentary' | 'speedrun' | 'meme'
-  out: 'recap.html',        // optional — omit to just get the HTML string
-});
+```text
+JSON events -> normalize and sort -> scene compiler
+                                       |
+                 +---------------------+---------------------+
+                 v                                           v
+          Hyperframes (default)                    cinematic (explicit)
+       embedded HTML/CSS/JavaScript             WaveSpeed images + video + voice
+                 |                                           |
+        offline browser player                         FFmpeg -> MP4
 ```
 
-`buildScenes(events)` (events → scene list) and `renderHyperframes(scenes)` (scene list → HTML) are pure and exported for custom pipelines.
+Hyperframes rendering uses a local vibe-core runner with egress disabled.
+Cinematic rendering sends derived prompts, narration text, and intermediate media to WaveSpeed AI.
 
-## Why Build This
+## Why it exists
 
-- private-repo-9a89 captures sessions — VibeMovie turns them into stories
-- "I built a SaaS in 4 hours" is interesting — a cinematic version of it is unforgettable
-- Content creators spend hours editing coding videos — this automates the entire pipeline
-- Every VibeMovie shared is a viral ad for the tool
-- Think: AI-generated documentary of your coding process
+A terminal recording preserves activity. A recap selects tasks, test outcomes, diff totals, and pull-request milestones into a short story.
+VibeMovie compiles those supplied events with fixed templates. It does not need a language model to build the default recap.
+Remotion and asciinema address related video and terminal workflows with different inputs.
+
+## Compare
+
+Checked 2026-10-14 against [Remotion](https://www.remotion.dev/) and [asciinema CLI](https://docs.asciinema.org/manual/cli/).
+
+| Property | VibeMovie | Remotion | asciinema |
+| --- | --- | --- | --- |
+| Input | Structured coding events | React video compositions | Terminal session output |
+| Scope | Template-based recap stories | Programmatic video and motion graphics | Terminal recording and streaming |
+| Default artifact here | Self-contained HTML | Rendered compositions or embedded player | Asciicast recording |
+| Authoring | JSON, Node.js API, agent tool | React components | Recorder CLI |
+
+## Coverage
+
+| Integration or surface | Status | Source behavior |
+| --- | --- | --- |
+| Hyperframes | Implemented; local | Embedded HTML, CSS, JavaScript, and scene data |
+| WaveSpeed AI | Implemented; live API pending | Hosted generation orchestration |
+| ByteDance Seedream v4 | Implemented via WaveSpeed; live API pending | Hero and face reference images |
+| FLUX Kontext Max | Implemented via WaveSpeed; live API pending | Keyframe image edits |
+| Kling v2.5 Turbo Pro | Implemented via WaveSpeed; live API pending | Image-to-video clips |
+| ElevenLabs Eleven v3 | Implemented via WaveSpeed; live API pending | Narration synthesis |
+| WaveSpeed video face swap | Implemented; best-effort | Optional intermediate face consistency step |
+| FFmpeg | Implemented; external executable | Normalize, concatenate, grade, and mux cinematic output |
+| Claude Code / OpenAI Codex / Google Gemini CLI | Event input only | Supply normalized JSON yourself; no harness-specific log reader |
+| MCP | Implemented | One stdio render tool |
+| OpenAI Sora / Replicate | — | No provider adapter shipped |
+
+The source declares two engines, three ratios, three templates, six scene kinds, and five hosted model endpoints through one API service.
+Verification here covers source and local tests with injected cinematic dependencies. No paid API requests or credential checks were performed.
+An implemented endpoint is not a guarantee that a provider model remains available.
+
+## Common use cases
+
+1. Claude Code developers: export task and test events into an offline HTML recap.
+2. Codex maintainers: describe pull-request milestones in JSON for a release story.
+3. Gemini CLI creators: choose portrait Hyperframes output with `--ratio 9:16`.
+4. Node.js teams: call `buildScenes` and `renderHyperframes` inside an existing event pipeline.
+5. MCP agents: render supplied events with the single `render` tool.
+6. WaveSpeed users: opt into hosted cinematic generation with their own key and FFmpeg installation.
 
 ## Features
 
-- **Story arc** — AI analyzes your session and creates a narrative: setup, struggle, breakthrough, deploy
-- **Cinematic editing** — Automatic cuts, zooms, transitions, and focus on the interesting parts
-- **AI narration** — Generated voiceover that explains the journey: "At minute 23, everything broke..."
-- **Dynamic soundtrack** — Music that matches the emotional arc (powered by VibeRadio engine)
-- **Code highlights** — Key code snippets rendered beautifully with syntax highlighting and annotations
-- **Stats overlay** — Lines of code, files changed, tokens used, time elapsed
-- **Chapters** — Auto-generated based on git commits and milestones
-- **Multiple formats** — YouTube (16:9), X/TikTok (9:16), LinkedIn (1:1), GIF summary
-- **Thumbnail generation** — AI-generated thumbnail optimized for clicks
-- **Templates** — Documentary, tutorial, speedrun, meme
+- **Scenes:** title, tasks, diff, terminal, merge, and end; optional scenes depend on supplied data.
+- **Templates:** documentary, speedrun, and meme control captions and pacing.
+- **HTML ratios:** `16:9`, `9:16`, and `1:1`.
+- **Player:** play/pause, timeline scrubbing, captions, and embedded scene data.
+- **Deterministic compilation:** the same events and scene options produce the same local scenes.
+- **Cinematic pipeline:** generated reference images, keyframes, clips, narration, and local MP4 assembly.
+- **Shot recipes:** exported recipe data and deterministic selectors for custom callers; not an automatic CLI storyboard selector.
+- **Suite notification:** rendering emits a best-effort `render-done` event through vibe-core.
 
-## Generation engine (cascade)
+## Runtime surfaces
 
-Video generation follows the shared `@vibe/core` cascade so it always works:
+```text
+vibemovie render [file.json|-] [--ratio 16:9|9:16|1:1]
+  [--template documentary|speedrun|meme] [--engine hyperframes|cinematic]
+  [--out path] [--title name]
+vibemovie mcp
+vibemovie help
+vibemovie --help / -h
+vibemovie --version / -v / -V
+```
 
-1. **Your existing model** — if your agent's provider does video (e.g. Sora via your
-   OpenAI), use it.
-2. **A video-gen key you bring** — Wavespeed, Replicate, or similar.
-3. **Hyperframes fallback** — pure HTML/CSS/JS animated "video" (a rendered,
-   animated web page). No generative-video model, no key, no network — always
-   available. (The prototype below _is_ a working Hyperframes recap.)
+`render` reads a file or stdin. Input accepts an event array or `{ "events": [...] }`.
+Defaults are `hyperframes`, `documentary`, `16:9`, and `./vibe-recap.html`.
+Cinematic output defaults to `./vibe-recap.mp4`.
 
-Options across all tiers: **sync/live** (scenes build as the agent works) or
-**async** (rendered after a turn/session) — user-configurable per hook · **aspect
-ratios** 16:9 / 9:16 / 1:1 / GIF · **sound on/off** (soundtrack via the VibeRadio
-engine + optional narration) · **subtitles/captions** · **transitions & templates**
-(documentary, tutorial, speedrun, meme) · **avatar narrator** — if you've set up a
-personal likeness/voice (e.g. HeyGen, or an on-device avatar), the recap can be
-narrated by your avatar instead of an abstract summary.
+`vibemovie mcp` starts the stdio Model Context Protocol (MCP) server with one tool:
 
-## Distribution
+| Tool | Required input | Optional input | Result |
+| --- | --- | --- | --- |
+| `render` | `events` array | `ratio`, `template`, `engine`, `title`, `out` | HTML text, or a written output path |
 
-- **CLI** — `vibemovie render session.json` (today) · `--session <id>` / `--repo .` (planned)
-- **npm package** — `npm install -g vibemovie`
-- **MCP server** — `vibemovie mcp` exposes a `render` tool your agent can call
-- **Claude Code skill** — `/vibemovie` to render your last session
-- **skills.sh** — Listed on skills.sh marketplace
-- **Web app** — Upload a git repo, get a movie of its entire history
+### Library example
 
-## Tech Stack
+Install with `npm install vibemovie`. Save this as `recap.mjs` and run `node recap.mjs`:
 
-- Node.js + TypeScript
-- Remotion (video rendering)
-- Claude API (narrative generation, story arc)
-- ElevenLabs (voiceover)
-- Tone.js (soundtrack — shared with VibeRadio)
-- FFmpeg (post-processing)
+```js
+import { renderMovie } from 'vibemovie';
+const result = await renderMovie([
+  { kind: 'task-done', ts: 1769500000000, payload: { label: 'Ship auth' } }
+], { title: 'Auth recap', out: 'recap.html' });
+console.log(result.engine, result.path); // hyperframes recap.html
+```
 
-## Prototype
+`buildScenes(events, options)` and `renderHyperframes(scenes, options)` are also exported for custom pipelines.
 
-Interactive, self-contained UX prototype (no build, no network): open
-[`docs/prototype.html`](docs/prototype.html) in a browser — it plays a real
-Hyperframes recap with a working scrubber, the cascade selector, and an avatar
-narrator toggle.
+## Delivery and behavior limits
 
-## Local-first
+Hyperframes produces animated HTML, not an MP4 or GIF. It does not record your screen or stream live agent activity.
+The CLI has no `--session` or `--repo` importer. Convert external recordings into the event schema before rendering.
+The scene compiler displays at most five task rows, four diff filenames, and five terminal lines.
+Terminal lines summarize supplied events; they are not a captured terminal transcript.
+Diff totals and test results reflect input claims, not an independent Git or test-run verification.
+Cinematic output is normalized to 1280×720 at 24 frames per second. HTML ratio options do not change that cinematic output size.
+Cinematic prompts use a fixed character and setting. There is no user-avatar selection or dynamic soundtrack engine.
+Missing `WAVESPEED_API_KEY` or FFmpeg triggers HTML fallback; recognized video filename extensions become `.html`.
+Runtime provider failures do not trigger a general HTML fallback. Failed clips may be skipped; all clips failing aborts the render.
+Prediction polling is bounded: normally 95 polls, narration 60, and face swap 140. Requests have no explicit network timeout.
+The face-swap step can fall back to the raw cut. Temporary cinematic work files remain on disk.
+Review input before rendering: hosted narration can include task labels, session names, and summary values.
 
-Runs on your own machine. The Hyperframes tier renders fully offline; nothing leaves
-your machine unless you opt into a hosted video model. Enforced by the `@vibe/core`
-consent model.
+## Integration guides
 
-## Vibe Suite
+- Portrait HTML recap: `vibemovie render session.json --ratio 9:16 --template speedrun --out portrait.html`.
+- Event pipeline: pipe a JSON array into `vibemovie render --out recap.html`.
+- Hosted cinematic recap: install FFmpeg, export `WAVESPEED_API_KEY`, then run `vibemovie render session.json --engine cinematic`.
+- Environment file: load variables in your shell or launcher before starting the CLI; VibeMovie does not read `.env` automatically.
+- Agent setup: configure your MCP host to launch `vibemovie mcp` over stdio.
 
-Part of the **Vibe Suite** — companion tools for agentic coding CLIs (Claude Code,
-Codex, Cursor, Gemini, Grok, pi, Kimi, and other harnesses). Ships as **CLI + npm
-package + MCP server**.
+Hosted rendering uses `https://api.wavespeed.ai/api/v3`. There is no separate ElevenLabs key in this pipeline.
 
-## Relationship to private-repo-9a89
+## Status
 
-- **private-repo-9a89** = raw capture + timelapse (quick, functional)
-- **VibeMovie** = cinematic, narrated, story-driven (polished, shareable)
-- VibeMovie can use private-repo-9a89 recordings as input
+Version 0.2.4 is pre-1.0; APIs and generation behavior can change.
+Public case studies are not yet published. No public documentation site is configured; setup guidance is self-contained here.
+Source-only prototypes illustrate additional controls; they are not shipped web applications.
+Use [GitHub issues](https://github.com/pooriaarab/vibemovie/issues) for support; repository access may be required.
+For contributions, run `npm ci`, `npm run build`, `npm run typecheck`, `npm test`, and `git diff --check`.
 
-## Revenue Potential
+## FAQ
 
-- Free tier: 1 movie/month, watermarked, 720p
-- Pro: unlimited, 4K, custom branding, all templates
-- Studio: team movies, custom narration voice, API access
+### Which integrations are verified?
+
+VibeMovie tests local rendering and cinematic orchestration with injected dependencies. Hosted endpoints have not been credential-checked in this rewrite.
+
+### Does VibeMovie provide a managed video service?
+
+VibeMovie runs as a local package. Optional hosted generation uses your WaveSpeed API key and provider account.
+
+### How is VibeMovie different from Remotion?
+
+VibeMovie compiles structured session events with preset scenes. Remotion provides React-based tools for custom video compositions.
+
+### How is VibeMovie different from asciinema?
+
+VibeMovie renders a summary from supplied events. asciinema records and streams terminal output.
+
+### Can VibeMovie work offline?
+
+VibeMovie renders Hyperframes HTML without remote assets or API keys. Its cinematic engine requires hosted API access.
+
+### Does VibeMovie export MP4 without credentials?
+
+VibeMovie defaults to HTML when no cinematic credentials are available. MP4 generation requires a WaveSpeed key and FFmpeg.
+
+### Does VibeMovie read Claude Code or Codex logs automatically?
+
+VibeMovie accepts JSON event input rather than scanning harness logs. Supply an event array through a file, stdin, the library, or MCP.
+
+### Can VibeMovie use my existing Sora or Replicate account?
+
+VibeMovie has no Sora or Replicate adapter in this version. The cinematic pipeline calls fixed WaveSpeed model endpoints.
+
+### Are all output ratios available for cinematic MP4?
+
+VibeMovie supports three ratios in Hyperframes HTML. Cinematic assembly currently normalizes video to 1280×720.
+
+## License
+
+MIT.
